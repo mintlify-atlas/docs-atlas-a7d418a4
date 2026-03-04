@@ -1,0 +1,144 @@
+---
+title: Initial Setup
+description: Set up your AutoResponse Discord bot from scratch
+---
+
+## Overview
+
+This guide walks you through creating and configuring your AutoResponse bot on Discord.
+
+## Prerequisites
+
+- Node.js v16 or higher
+- A Discord account
+- Basic command line knowledge
+
+## Creating Your Discord Bot
+
+<Steps>
+  <Step title="Access Discord Developer Portal">
+    Navigate to the [Discord Developer Portal](https://discord.com/developers/applications) and sign in with your Discord account.
+  </Step>
+
+  <Step title="Create New Application">
+    Click the **New Application** button in the top right corner.
+    
+    Give your application a name (e.g., "AutoResponse") and accept Discord's Terms of Service.
+  </Step>
+
+  <Step title="Navigate to Bot Section">
+    In the left sidebar, click on **Bot** to access the bot configuration page.
+    
+    Click **Add Bot** to convert your application into a bot user.
+  </Step>
+
+  <Step title="Generate Bot Token">
+    Under the **Token** section, click **Reset Token** to generate your bot token.
+    
+    <Warning>
+      Copy this token immediately and store it securely. You won't be able to see it again!
+      
+      Never share your bot token publicly or commit it to version control.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Bot Intents">
+    Scroll down to the **Privileged Gateway Intents** section and enable:
+    
+    - **Presence Intent**
+    - **Server Members Intent**
+    - **Message Content Intent**
+    
+    These intents are required for AutoResponse to function properly.
+    
+    <Note>
+      Your bot must have these intents enabled to read message content and respond to users.
+    </Note>
+  </Step>
+</Steps>
+
+## Inviting Your Bot to a Server
+
+<Steps>
+  <Step title="Navigate to OAuth2 Section">
+    In the left sidebar of the Discord Developer Portal, click on **OAuth2** > **URL Generator**.
+  </Step>
+
+  <Step title="Select Bot Scope">
+    Under **Scopes**, check the following:
+    
+    - `bot`
+    - `applications.commands`
+  </Step>
+
+  <Step title="Configure Bot Permissions">
+    Under **Bot Permissions**, select the following permissions:
+    
+    - Read Messages/View Channels
+    - Send Messages
+    - Send Messages in Threads
+    - Embed Links
+    - Attach Files
+    - Read Message History
+    - Add Reactions
+    - Use Slash Commands
+    
+    <Tip>
+      The permission integer should be `534723951680` for all required permissions.
+    </Tip>
+  </Step>
+
+  <Step title="Copy and Use Invite URL">
+    Copy the generated URL at the bottom of the page.
+    
+    Paste this URL into your browser and select the server you want to add the bot to.
+    
+    <Note>
+      You must have **Manage Server** permissions on the target server to add bots.
+    </Note>
+  </Step>
+</Steps>
+
+## Initial Configuration
+
+After setting up your bot on Discord, you need to configure your local environment:
+
+1. **Create Environment File**
+   
+   Create a `.env` file in your project root (see [Environment Variables](/configuration/environment))
+
+2. **Install Dependencies**
+   
+   ```bash
+   npm install
+   ```
+
+3. **Start the Bot**
+   
+   ```bash
+   npm start
+   ```
+
+4. **Verify Bot is Online**
+   
+   Check your Discord server - your bot should now appear online!
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Permissions" icon="shield-check" href="/configuration/permissions">
+    Set up Discord permissions and user privacy controls
+  </Card>
+  
+  <Card title="Environment Variables" icon="gear" href="/configuration/environment">
+    Configure your bot's environment variables
+  </Card>
+  
+  <Card title="Database Setup" icon="database" href="/configuration/database">
+    Understand the bot's database structure
+  </Card>
+  
+  <Card title="Commands" icon="terminal" href="/commands/slash-commands">
+    Learn about available slash commands
+  </Card>
+</CardGroup>

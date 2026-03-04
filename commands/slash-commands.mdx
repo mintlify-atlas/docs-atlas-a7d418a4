@@ -1,0 +1,478 @@
+---
+title: Slash Commands
+description: Complete reference for all AutoResponse slash commands
+---
+
+AutoResponse provides a comprehensive set of slash commands to manage auto-replies, phrases, channels, and more. All slash commands use Discord's native command interface.
+
+## General Commands
+
+### /ping
+
+Check the bot's latency and response time.
+
+**Permissions Required:** Send Messages
+
+**Usage:**
+```
+/ping
+```
+
+**Response:**
+- WebSocket ping (connection to Discord)
+- REST API ping (response time)
+- Color-coded indicator (green < 75ms, red ≥ 75ms)
+
+---
+
+### /stats
+
+View detailed statistics about the AutoResponse bot.
+
+**Permissions Required:** Send Messages
+
+**Usage:**
+```
+/stats
+```
+
+**Information Displayed:**
+- Server count
+- User install count
+- Shard count
+- Uptime (formatted as days, hours, minutes, seconds)
+- RAM usage (in MB)
+- CPU usage (percentage)
+- Total slash commands available
+
+---
+
+## Phrase Management
+
+Manage the phrases that trigger auto-replies in your server.
+
+### /addphrase
+
+Add a new phrase that will trigger automatic replies.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `phrase` | String | Yes | The phrase to add to the trigger list |
+
+**Usage:**
+```
+/addphrase phrase:"hello there"
+```
+
+<Note>
+  Phrases are case-sensitive and stored in a SQLite database per server.
+</Note>
+
+**Behavior:**
+- Checks if phrase already exists before adding
+- Returns error if phrase is duplicate
+- Confirms successful addition with success embed
+
+---
+
+### /removephrase
+
+Remove an existing phrase from the trigger list.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `phrase` | String | Yes | The phrase to remove from the trigger list |
+
+**Usage:**
+```
+/removephrase phrase:"hello there"
+```
+
+---
+
+### /listphrases
+
+Display all phrases currently configured for your server.
+
+**Permissions Required:** Manage Channels
+
+**Usage:**
+```
+/listphrases
+```
+
+**Response:**
+- Lists all phrases in a formatted embed
+- Shows "No phrases have been added yet" if list is empty
+
+---
+
+## Channel Management
+
+Configure which channels AutoResponse will monitor and respond in.
+
+### /addreplychannel
+
+Add a channel where AutoResponse will send automatic replies.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The text channel to add (must be a Guild Text channel) |
+
+**Usage:**
+```
+/addreplychannel channel:#general
+```
+
+**Behavior:**
+- Only accepts Guild Text channels
+- Sets initial reply chance to 6%
+- Returns error if channel is already configured
+- Stores channel configuration in server database
+
+<Note>
+  Each channel has a dynamic reply chance that increases with each message and resets to 6% after a reply is sent.
+</Note>
+
+---
+
+### /removereplychannel
+
+Remove a channel from the auto-reply list.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The text channel to remove |
+
+**Usage:**
+```
+/removereplychannel channel:#general
+```
+
+**Behavior:**
+- Removes channel from database
+- Returns error if channel is not in the reply list
+
+---
+
+## Reply Control
+
+Temporarily pause and resume auto-replies in specific channels.
+
+### /pausereplies
+
+Add a cooldown to temporarily pause replies in a channel.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The channel to pause replies in |
+| `minutes` | Integer | Yes | Duration of the pause in minutes |
+
+**Usage:**
+```
+/pausereplies channel:#general minutes:30
+```
+
+**Behavior:**
+- Temporarily disables auto-replies for the specified duration
+- Stores cooldown timestamp in database
+- Validates that minutes value is positive
+
+<Warning>
+  Paused channels will not send any automatic replies until the cooldown expires or is manually removed.
+</Warning>
+
+---
+
+### /resumereplies
+
+Remove any cooldowns and resume automatic replies in a channel.
+
+**Permissions Required:** Manage Channels
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The channel to resume replies in |
+
+**Usage:**
+```
+/resumereplies channel:#general
+```
+
+**Behavior:**
+- Removes cooldown from database
+- Immediately allows replies to resume
+
+---
+
+## Leaderboard
+
+### /leaderboard
+
+Display the leaderboard of members who received the most replies.
+
+**Permissions Required:** Send Messages
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `season` | Choice | Yes | Select a season: Current, Season 2, or Season 1 |
+
+**Usage:**
+```
+/leaderboard season:Current
+```
+
+**Available Seasons:**
+- **Current** - Active leaderboard
+- **Season 2** - Historical Season 2 data
+- **Season 1** - Historical Season 1 data
+
+**Display Format:**
+- Top 10 users shown
+- Medal indicators (🥇 🥈 🥉) for top 3
+- Special badges for roles:
+  - Owner badge
+  - Programmer badge
+  - Helper badge
+  - Season Winner badges (S1W, S2W)
+- Reply count for each user
+
+---
+
+### /rename
+
+Rename the AutoResponse bot's nickname in your server.
+
+**Permissions Required:** Moderate Members
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | String | Yes | The new nickname for AutoResponse |
+
+**Usage:**
+```
+/rename name:"CustomBotName"
+```
+
+<Note>
+  This only changes the bot's nickname in your server, not globally.
+</Note>
+
+---
+
+## Privacy & User Settings
+
+### /optin
+
+Opt in to receive automatic replies from the bot.
+
+**Permissions Required:** Send Messages
+
+**Usage:**
+```
+/optin
+```
+
+**Behavior:**
+- Removes user from opt-out database
+- Allows bot to reply to user's messages
+- Returns error if already opted in
+
+---
+
+### /optout
+
+Opt out of receiving automatic replies from the bot.
+
+**Permissions Required:** Send Messages
+
+**Usage:**
+```
+/optout
+```
+
+**Behavior:**
+- Adds user to opt-out database (stores userId and userTag)
+- Bot will not reply to user's messages
+- Returns error if already opted out
+
+<Warning>
+  When opted out, AutoResponse will never send automatic replies to your messages, even in configured channels.
+</Warning>
+
+---
+
+### /privacypolicy
+
+View the AutoResponse privacy policy.
+
+**Permissions Required:** Send Messages
+
+**Usage:**
+```
+/privacypolicy
+```
+
+**Response:**
+- Displays the bot's privacy policy in an embed
+- Available in DMs, guilds, and private channels
+
+---
+
+## User Information
+
+### /user
+
+Get detailed information about a Discord user.
+
+**Permissions Required:** Moderate Members
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `user` | User | Yes | The user to view details of |
+
+**Usage:**
+```
+/user user:@username
+```
+
+**Information Displayed:**
+- User tag and ID
+- Account creation date
+- Server join date (if member)
+- Highest role
+- Role permissions
+- Profile badges (Active Developer, Bug Hunter, Nitro, etc.)
+- Avatar and banner URLs
+
+---
+
+## Administration
+
+### /setlogschannel
+
+Set a channel to receive bot event logs.
+
+**Permissions Required:** Manage Guild
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The channel where logs will be sent |
+
+**Usage:**
+```
+/setlogschannel channel:#bot-logs
+```
+
+**Behavior:**
+- Creates or updates logsChannel table in server database
+- Only one logs channel can be active per server
+- Uses `INSERT OR REPLACE` to update existing configuration
+
+<Note>
+  The logs channel will receive notifications about bot events and activities in your server.
+</Note>
+
+---
+
+## Permission Summary
+
+| Command | Required Permission |
+|---------|--------------------|
+| /ping | Send Messages |
+| /stats | Send Messages |
+| /addphrase | Manage Channels |
+| /removephrase | Manage Channels |
+| /listphrases | Manage Channels |
+| /addreplychannel | Manage Channels |
+| /removereplychannel | Manage Channels |
+| /pausereplies | Manage Channels |
+| /resumereplies | Manage Channels |
+| /leaderboard | Send Messages |
+| /rename | Moderate Members |
+| /optin | Send Messages |
+| /optout | Send Messages |
+| /privacypolicy | Send Messages |
+| /user | Moderate Members |
+| /setlogschannel | Manage Guild |
+
+---
+
+## Database Structure
+
+AutoResponse uses SQLite databases to store server-specific data:
+
+### Per-Server Database (`{serverId}.db`)
+
+```sql
+-- Phrases that trigger replies
+CREATE TABLE phrases (
+  phrase TEXT PRIMARY KEY
+)
+
+-- Channels where bot can reply
+CREATE TABLE replyChannels (
+  id TEXT PRIMARY KEY,
+  chance INTEGER
+)
+
+-- Logs channel configuration
+CREATE TABLE logsChannel (
+  id TEXT PRIMARY KEY
+)
+```
+
+### Global Databases
+
+```sql
+-- Users who opted out
+CREATE TABLE optOutList (
+  userId TEXT PRIMARY KEY,
+  userTag TEXT UNIQUE
+)
+
+-- Channel cooldowns
+CREATE TABLE cooldowns (
+  serverId TEXT,
+  channelId TEXT,
+  timeRemaining INTEGER,
+  PRIMARY KEY (serverId, channelId)
+)
+
+-- Leaderboard data
+CREATE TABLE current (
+  username TEXT,
+  replies INTEGER,
+  groups TEXT
+)
+```

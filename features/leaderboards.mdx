@@ -1,0 +1,274 @@
+---
+title: Leaderboards
+description: Track server members who receive the most bot replies with seasonal competitions
+---
+
+AutoResponse includes a leaderboard system that tracks which users receive the most auto-replies. The system supports seasonal competitions, allowing you to archive past leaderboards and start fresh competitions.
+
+## How Leaderboards Work
+
+Every time the bot replies to a user's message, their reply count is automatically incremented in the leaderboard database.
+
+<Steps>
+  <Step title="Reply Triggered">
+    When the bot sends an auto-reply to a user's message, the leaderboard update process begins.
+  </Step>
+  
+  <Step title="User Lookup">
+    The system checks if the user already exists in the current leaderboard using their Discord user ID.
+  </Step>
+  
+  <Step title="Counter Update">
+    If the user exists, their reply count increases by 1. If they're new, they're added with a count of 1.
+  </Step>
+  
+  <Step title="Data Persisted">
+    The updated count is immediately saved to the SQLite database.
+  </Step>
+</Steps>
+
+## Viewing the Leaderboard
+
+Use the `/leaderboard` command to display the top 10 users:
+
+```
+/leaderboard season:Current
+```
+
+### Command Options
+
+The `/leaderboard` command accepts a required `season` parameter:
+
+| Season | Description |
+|--------|-------------|
+| **Current** | Active leaderboard tracking ongoing replies |
+| **Season 2** | Archived leaderboard from Season 2 |
+| **Season 1** | Archived leaderboard from Season 1 |
+
+<Note>
+  The season choices are hardcoded in the command definition and match the table names in the leaderboard database.
+</Note>
+
+## Leaderboard Display
+
+The leaderboard shows the top 10 users with the most replies:
+
+### Medal Rankings
+
+The top three positions receive special recognition:
+
+- 🥇 **1st place** - Gold medal
+- 🥈 **2nd place** - Silver medal  
+- 🥉 **3rd place** - Bronze medal
+- **4th-10th** - Numerical ranking (4th, 5th, etc.)
+
+From `commands/slash/leaderboard.js:40-55`:
+
+```javascript
+const leaderboardFields = topEntries.map((entry, index) => {
+    const medals = ["🥇", "🥈", "🥉"];
+    const medal = index < 3 ? medals[index] : `**${index + 1}th**`;
+    
+    return {
+        name: `${medal} - ${entry.username}`,
+        value: `**${entry.replies} replies**`,
+        inline: false,
+    };
+});
+```
+
+### User Badges
+
+Users can have special badges displayed next to their names based on their `groups` field:
+
+<Card title="Available Badges" icon="badge">
+  - **Active Developer** - Owner badge for server owners
+  - **Wrench icon** - Programmer badge for bot developers
+  - **Helper icon** - Helper badge for support staff
+  - **Season 1 Winner** - Badge for Season 1 competition winners
+  - **Season 2 Winner** - Badge for Season 2 competition winners
+</Card>
+
+Badges are defined in `utils/constants.js` and assigned through the `groups` column:
+
+```javascript
+const groups = entry.groups ? entry.groups.split(",").map((group) => group.trim()) : [];
+const owner = groups.includes("Owner") ? EMOJIS.ActiveDeveloper : "";
+const programmer = groups.includes("Programmer") ? EMOJIS.ico_wrench : "";
+const helper = groups.includes("Helper") ? EMOJIS.ico_helper : "";
+const s1winner = groups.includes("S1W") ? EMOJIS.Season_1_Winner : "";
+const s2winner = groups.includes("S2W") ? EMOJIS.Season_2_Winner : "";
+```
+
+<Warning>
+  User badges are stored as comma-separated values in the database and cannot be modified through Discord commands. Direct database access is required to assign badges.
+</Warning>
+
+## Leaderboard Updates
+
+The leaderboard is updated immediately after each reply using the `updateLeaderboard` utility function.
+
+### Update Process
+
+From `utils/updateLeaderboard.js:28-68`:
+
+```javascript
+db.get(
+    `SELECT userID FROM current WHERE userID = ?`,
+    [userID],
+    (selectErr, row) => {
+        if (row) {
+            // User exists - increment their count
+            db.run(
+                `UPDATE current SET replies = replies + 1 WHERE userID = ?`,
+                [userID]
+            );
+        } else {
+            // New user - insert with count of 1
+            db.run(
+                `INSERT INTO current (username, userID, replies) VALUES (?, ?, 1)`,
+                [userTag, userID]
+            );
+        }
+    }
+);
+```
+
+<Tip>
+  The leaderboard tracks users by their Discord user ID (numerical) rather than their username, ensuring counts persist even if users change their display names.
+</Tip>
+
+## Seasonal Competition System
+
+AutoResponse supports multiple leaderboard seasons, allowing you to:
+
+- Archive past competition results
+- Start fresh seasonal competitions
+- Maintain historical records of previous winners
+
+### Database Structure
+
+Leaderboards are stored in a single SQLite database at `data/leaderboards.db` with separate tables for each season:
+
+- **current** - Active leaderboard
+- **Season2** - Season 2 archive
+- **Season1** - Season 1 archive
+
+### Table Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS current (
+    username TEXT,
+    userID TEXT PRIMARY KEY,
+    replies INTEGER DEFAULT 0,
+    groups TEXT
+)
+```
+
+<Note>
+  Each season table uses the same schema structure. The `groups` field stores comma-separated badge identifiers.
+</Note>
+
+## Starting a New Season
+
+While there's no automated command for season transitions, the process involves:
+
+1. Manually rename the `current` table to archive it (e.g., `Season3`)
+2. Create a new `current` table with the standard schema
+3. Add the new season to the `/leaderboard` command choices
+4. Optionally assign season winner badges (`S3W`) to top finishers
+
+<Warning>
+  Season transitions require direct database manipulation and code updates. Plan season changes carefully and announce them to your community in advance.
+</Warning>
+
+## Leaderboard Initialization
+
+On bot startup, AutoResponse initializes the leaderboard database:
+
+From `utils/getLeaderboards.js:16-28`:
+
+```javascript
+db.run(
+    `CREATE TABLE IF NOT EXISTS current (
+        username TEXT,
+        userID INTEGER,
+        replies INTEGER,
+        groups TEXT
+    )`,
+    (err) => {
+        if (err) {
+            return Error(`Error creating table: ${err.message}`);
+        }
+    }
+);
+```
+
+The system logs confirmation when the leaderboard table is found:
+
+```
+Leaderboard current found
+```
+
+## Empty Leaderboards
+
+If a season has no data (new server or archived season with no activity):
+
+```javascript
+if (leaderboard.length === 0) {
+    const emptyEmbed = ErrorEmbed(`Leaderboard is empty.`);
+    return interaction.reply({ embeds: [emptyEmbed], ephemeral: true });
+}
+```
+
+<Note>
+  Empty leaderboards return a user-friendly error message rather than displaying a blank leaderboard.
+</Note>
+
+## Leaderboard Sorting
+
+Results are sorted by reply count in descending order:
+
+```javascript
+const sortedLeaderboard = leaderboard.sort(
+    (a, b) => b.replies - a.replies
+);
+const topEntries = sortedLeaderboard.slice(0, 10);
+```
+
+Only the top 10 entries are displayed, even if more users are in the database.
+
+## Privacy Considerations
+
+<Accordion title="Leaderboards are ephemeral">
+  By default, leaderboard responses are sent as ephemeral messages (only visible to the command user). This prevents channel spam while allowing users to check rankings privately.
+</Accordion>
+
+<Accordion title="Opt-out affects tracking">
+  Users who opt out with `/optout` stop receiving replies and therefore stop gaining leaderboard points. Their existing points remain but won't increase.
+</Accordion>
+
+<Accordion title="Usernames are public">
+  Discord usernames are displayed on the leaderboard. Users concerned about privacy should be aware their username and reply count are visible.
+</Accordion>
+
+## Technical Details
+
+### Database Location
+
+- **Path**: `data/leaderboards.db`
+- **Type**: SQLite3
+- **Access**: Read/write by bot, read-only for leaderboard queries
+
+### Performance
+
+The leaderboard system is optimized for performance:
+
+- Updates use simple `UPDATE` or `INSERT` queries
+- Sorting happens in memory on the top 10 entries only
+- Database connections are opened per-operation and closed immediately
+- No caching layer (data is always fresh from the database)
+
+<Tip>
+  Leaderboard queries open the database in `OPEN_READONLY` mode for safety, preventing accidental data modification during read operations.
+</Tip>

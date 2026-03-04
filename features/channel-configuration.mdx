@@ -1,0 +1,442 @@
+---
+title: Channel Configuration
+description: Configure which Discord channels have auto-reply functionality enabled
+---
+
+AutoResponse's auto-reply system only operates in channels you explicitly configure as "reply channels." This allows precise control over where the bot participates in conversations.
+
+## How Reply Channels Work
+
+Reply channels are stored per-server with an associated reply chance percentage:
+
+- Each reply channel starts with a **6% reply chance**
+- The chance increases by 1% with each message until a reply triggers
+- Multiple channels can be configured per server
+- Each channel maintains its own independent reply chance counter
+
+From `src/events/messageCreate.js:149-165`:
+
+```javascript
+const settings = await getSettings(serverId, message.client);
+const replyChannels = settings.replyChannels || [];
+const replyChannel = replyChannels.find(channel => channel.id === message.channel.id);
+
+let chance = replyChannel ? replyChannel.chance : 0;
+```
+
+<Note>
+  Messages sent in channels NOT configured as reply channels are logged with a red "0%" indicator and completely bypass the auto-reply logic.
+</Note>
+
+## Adding Reply Channels
+
+Use the `/addreplychannel` command to enable auto-replies in a channel:
+
+```
+/addreplychannel channel:#general
+```
+
+### Command Details
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The text channel to enable auto-replies in |
+
+<Steps>
+  <Step title="Select a channel">
+    Use the channel selector to pick a text channel. Only **Guild Text** channels can be selected.
+  </Step>
+  
+  <Step title="Duplicate check">
+    The bot verifies the channel isn't already configured as a reply channel.
+  </Step>
+  
+  <Step title="Initialize with 6% chance">
+    The channel is added to the database with a starting chance of 6%.
+  </Step>
+  
+  <Step title="Confirmation">
+    You receive an embed confirming the channel was added successfully.
+  </Step>
+</Steps>
+
+### Implementation
+
+From `commands/slash/addReplyChannel.js:44-58`:
+
+```javascript
+if (!serverSettings.replyChannels.some((channel) => channel.id === selectedChannelId)) {
+    serverSettings.replyChannels.push({ id: selectedChannelId, chance: 6 });
+    
+    db.run(
+        `INSERT INTO replyChannels (id, chance) VALUES (?, ?)`, 
+        [selectedChannelId, 6],
+        function (err) {
+            if (err) {
+                const errorEmbed = ErrorEmbed("Failed to update the database.");
+                return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+            }
+            
+            const successEmbed = SuccessEmbed(
+                "Added Reply Channel Successfully", 
+                `<#${selectedChannel.id}> has been added as a reply channel.`
+            );
+            interaction.reply({ embeds: [successEmbed], ephemeral: true });
+        }
+    );
+}
+```
+
+<Warning>
+  If you try to add a channel that's already configured as a reply channel, the bot will reject the request with an error message.
+</Warning>
+
+### Permissions Required
+
+- **Manage Channels** permission is required
+- This ensures only server moderators can control where the bot operates
+
+## Removing Reply Channels
+
+Use the `/removereplychannel` command to disable auto-replies in a channel:
+
+```
+/removereplychannel channel:#general
+```
+
+### Command Details
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `channel` | Channel | Yes | The text channel to remove from auto-replies |
+
+<Note>
+  Removing a reply channel immediately stops all auto-reply activity in that channel. The current reply chance percentage is deleted from the database.
+</Note>
+
+From `commands/slash/removeReplyChannel.js:43-63`:
+
+```javascript
+const indexToRemove = serverSettings.replyChannels.findIndex(
+    (channel) => channel.id === selectedChannelId
+);
+
+if (indexToRemove !== -1) {
+    serverSettings.replyChannels.splice(indexToRemove, 1);
+    
+    db.run(
+        `DELETE FROM replyChannels WHERE id = ?`,
+        [selectedChannelId],
+        function (err) {
+            if (err) {
+                const errorEmbed = ErrorEmbed("Failed to update the database.");
+                return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+            }
+            
+            const successEmbed = SuccessEmbed(
+                "Removed Reply Channel Successfully", 
+                `<#${selectedChannel.id}> has been removed as a reply channel.`
+            );
+            interaction.reply({ embeds: [successEmbed], ephemeral: true });
+        }
+    );
+}
+```
+
+### Permissions Required
+
+- **Manage Channels** permission is required
+
+<Warning>
+  There is no confirmation prompt before removal. Once you run `/removereplychannel`, the channel is immediately removed from the auto-reply system.
+</Warning>
+
+## Channel-Specific Reply Chances
+
+Each reply channel maintains its own independent reply chance counter:
+
+```javascript
+if (replyChannel) {
+    const randomChance = Math.random() * 100;
+    
+    if (randomChance <= chance) {
+        replyToUser(message);
+        
+        // Reset to 6% after reply
+        replyChannel.chance = 6;
+        
+        const updateChannels = `UPDATE replyChannels SET chance = ? WHERE id = ?`;
+        db.run(updateChannels, [replyChannel.chance, replyChannel.id]);
+    } else {
+        // Increase chance by 1%, capped at 100%
+        chance = Math.min(chance + 1, 100);
+        
+        const updateChannels = `UPDATE replyChannels SET chance = ? WHERE id = ?`;
+        db.run(updateChannels, [chance, replyChannel.id]);
+    }
+}
+```
+
+<Card title="Independent Tracking" icon="chart-line">
+  If you have multiple reply channels, each one progresses through the 6%-100% cycle independently. A reply in #general doesn't affect the chance counter in #memes.
+</Card>
+
+## Database Structure
+
+Reply channels are stored per-server in individual SQLite databases:
+
+### Storage Location
+
+- **Path**: `data/{serverId}.db`
+- **Table**: `replyChannels`
+- **Schema**: `(id TEXT PRIMARY KEY, chance INTEGER)`
+
+From `commands/slash/addReplyChannel.js:13-16`:
+
+```javascript
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS replyChannels ( id TEXT PRIMARY KEY, chance INTEGER )`);
+    db.run(`CREATE TABLE IF NOT EXISTS trustedRoles ( id TEXT PRIMARY KEY )`);
+    db.run(`CREATE TABLE IF NOT EXISTS phrases ( phrase TEXT PRIMARY KEY )`);
+});
+```
+
+### Schema Details
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | Discord channel ID (primary key) |
+| `chance` | INTEGER | Current reply chance percentage (6-100) |
+
+<Tip>
+  The channel ID serves as the primary key, preventing duplicate entries and ensuring fast lookups during message processing.
+</Tip>
+
+## Reply Channel Settings Loading
+
+When a message is created, the bot loads the server's settings:
+
+From `src/events/messageCreate.js:149-152`:
+
+```javascript
+const db = initializeDatabase(serverId);
+const settings = await getSettings(serverId, message.client);
+const replyChannels = settings.replyChannels || [];
+const replyChannel = replyChannels.find(channel => channel.id === message.channel.id);
+```
+
+The `getSettings` utility function:
+- Queries the `replyChannels` table for all configured channels
+- Returns an object with a `replyChannels` array
+- Each array element contains `{ id: "channelId", chance: 6-100 }`
+
+## Non-Reply Channel Behavior
+
+Messages sent in channels that are NOT configured as reply channels:
+
+1. Are logged with a red "0%" indicator
+2. Skip all auto-reply logic completely
+3. Don't trigger leaderboard updates
+4. Don't consume bot resources beyond basic logging
+
+From `src/events/messageCreate.js:250-252`:
+
+```javascript
+if (!replyChannel) {
+    return messageCreate(`${'0%'.red} - ${serverName.cyan} - ${"#".cyan + channelName.cyan} - ${authorUsername.cyan} - ${messageContent.white}`);
+}
+```
+
+<Note>
+  This allows the bot to be present in all server channels for monitoring without auto-replying everywhere.
+</Note>
+
+## Channel Type Restrictions
+
+Only **Guild Text** channels can be configured as reply channels:
+
+```javascript
+.addChannelOption(option => option
+    .setName("channel")
+    .setDescription("The channel to add")
+    .setRequired(true)
+    .addChannelTypes(ChannelType.GuildText)
+)
+```
+
+The following channel types are NOT supported:
+- Voice channels
+- Announcement channels  
+- Forum channels
+- Stage channels
+- Category channels
+- DM channels
+
+<Warning>
+  Attempting to use unsupported channel types will result in Discord preventing you from selecting them in the command interface.
+</Warning>
+
+## Best Practices
+
+<Accordion title="Start with one channel">
+  When first setting up AutoResponse, configure just one casual/social channel as a reply channel. Monitor the bot's behavior before expanding to additional channels.
+</Accordion>
+
+<Accordion title="Avoid important channels">
+  Don't enable auto-replies in:
+  - Announcement channels
+  - Rules/info channels  
+  - Support ticket channels
+  - Staff-only channels
+  
+  Auto-replies work best in casual conversation channels.
+</Accordion>
+
+<Accordion title="Consider channel activity">
+  High-activity channels will trigger replies more frequently (chance increases faster). Low-activity channels may go days without a reply. Balance your selections accordingly.
+</Accordion>
+
+<Accordion title="Monitor the logs">
+  Watch the console output to see how quickly reply chances increase in different channels. This helps you understand the bot's behavior patterns.
+</Accordion>
+
+<Accordion title="Communicate with your community">
+  Let server members know which channels have auto-replies enabled and remind them about the `/optout` command if they prefer not to be replied to.
+</Accordion>
+
+## Chance Persistence
+
+Reply chance percentages are persisted to the database after every message:
+
+```javascript
+const updateChannels = `UPDATE replyChannels SET chance = ? WHERE id = ?`;
+db.run(updateChannels, [chance, replyChannel.id], function (err) {
+    if (err) {
+        Error(`Error updating replyChannel chance for server ${serverId}: ${err.message}`);
+    }
+});
+```
+
+This ensures:
+- Chance values survive bot restarts
+- Each channel's progression is never lost
+- The system can resume exactly where it left off
+
+<Tip>
+  If the bot goes offline and comes back, reply chances will continue from their previous values, not reset to 6%.
+</Tip>
+
+## Viewing Configured Channels
+
+There is no built-in command to list all reply channels. To view your configured channels, you have two options:
+
+### Option 1: Check the logs
+
+Watch console output when messages are sent. Configured channels show a green percentage, non-configured show red "0%".
+
+### Option 2: Direct database query
+
+```bash
+sqlite3 data/{serverId}.db "SELECT * FROM replyChannels;"
+```
+
+Output:
+```
+123456789012345678|12
+234567890123456789|47
+```
+
+The first column is the channel ID, the second is the current chance percentage.
+
+<Note>
+  You can convert channel IDs to channel mentions in Discord by formatting them as `<#123456789012345678>`.
+</Note>
+
+## Troubleshooting
+
+<Accordion title="Bot not replying in configured channel">
+  Check:
+  - Does the server have phrases configured? (`/listphrases`)
+  - Is the bot rate-limited or in cooldown?
+  - Are messages coming from bots/webhooks? (Bot ignores these)
+  - Is the user opted out? (Check opt-out list)
+  - Is the chance very low? (May take many messages before reply)
+</Accordion>
+
+<Accordion title="Can't add channel">
+  Verify:
+  - You have **Manage Channels** permission
+  - The channel isn't already configured (run the command again to see the error)
+  - You're selecting a text channel, not a voice/forum channel
+</Accordion>
+
+<Accordion title="Chance not increasing">
+  Ensure:
+  - Messages are from real users (not bots)
+  - Users aren't opted out
+  - No cooldown is active
+  - Check console logs for the percentage indicator
+</Accordion>
+
+<Accordion title="Bot replying in wrong channels">
+  Review your reply channel configuration. The bot should only reply in explicitly configured channels. If it's replying elsewhere, check for:
+  - Accidentally configured channels
+  - Multiple bot instances running
+  - Database corruption (rare)
+</Accordion>
+
+## Advanced: Multi-Server Setup
+
+Each Discord server (guild) has its own:
+- Independent database file: `data/{serverId}.db`
+- Separate reply channel configuration
+- Isolated chance progression counters
+
+<Card title="Full Isolation" icon="server">
+  If your bot is in multiple servers, each server's channel configuration is completely independent. Adding a reply channel in Server A doesn't affect Server B in any way.
+</Card>
+
+## Technical Details
+
+### Channel Lookup Performance
+
+Channel lookups are optimized:
+
+```javascript
+const replyChannel = replyChannels.find(channel => channel.id === message.channel.id);
+```
+
+- All reply channels are loaded once per message
+- Lookup is O(n) where n = number of reply channels
+- Typically very fast (most servers have 1-5 reply channels)
+
+### Database Initialization
+
+```javascript
+function initializeDatabase(serverId) {
+    const dbFilePath = path.join(__dirname, "..", "..", "data", `${serverId}.db`);
+    const db = new sqlite3.Database(dbFilePath);
+    
+    db.serialize(() => {
+        db.run(`CREATE TABLE IF NOT EXISTS replyChannels ( id TEXT PRIMARY KEY, chance INTEGER )`);
+    });
+    
+    return db;
+}
+```
+
+The `CREATE TABLE IF NOT EXISTS` pattern ensures the table is created on first use, making setup seamless.
+
+### Error Recovery
+
+If database updates fail:
+
+```javascript
+db.run(updateChannels, [chance, replyChannel.id], function (err) {
+    if (err) {
+        Error(`Error updating replyChannel chance for server ${serverId}: ${err.message}`);
+    }
+});
+```
+
+Errors are logged but don't crash the bot. The in-memory chance value continues to be used for the current session.

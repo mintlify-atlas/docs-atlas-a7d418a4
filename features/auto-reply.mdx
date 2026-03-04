@@ -1,0 +1,181 @@
+---
+title: Auto-Reply System
+description: Learn how AutoResponse's incremental chance auto-reply system works
+---
+
+AutoResponse uses an intelligent incremental chance system to provide natural, unpredictable auto-replies in configured channels. The bot starts with a low reply chance that gradually increases with each message until a reply is triggered.
+
+## How It Works
+
+The auto-reply system operates on a probability-based mechanism that resets after each successful reply:
+
+<Steps>
+  <Step title="Initial Chance">
+    When a channel is first added as a reply channel, the bot starts with a **6% chance** to reply to any message.
+  </Step>
+  
+  <Step title="Chance Increases">
+    With each message sent in the channel (by non-bot users who haven't opted out), the reply chance increases by **1%**.
+  </Step>
+  
+  <Step title="Reply Triggered">
+    When a random number falls within the current chance percentage, the bot replies with a random phrase from your server's phrase list.
+  </Step>
+  
+  <Step title="Chance Resets">
+    After sending a reply, the chance immediately resets back to **6%**, and the cycle begins again.
+  </Step>
+</Steps>
+
+## The Probability System
+
+The core reply logic generates a random number between 0-100 and compares it against the current chance:
+
+```javascript
+const randomChance = Math.random() * 100;
+
+if (randomChance <= chance) {
+    replyToUser(message);
+    
+    // Reset chance back to starting value
+    replyChannel.chance = 6;
+} else {
+    // Increase chance by 1%, capped at 100%
+    chance = Math.min(chance + 1, 100);
+}
+```
+
+<Note>
+  The chance percentage has a maximum cap of **100%**, meaning after 94 consecutive messages without a reply, the bot is guaranteed to respond on the next message.
+</Note>
+
+## Cooldown System
+
+To prevent spam and ensure natural conversation flow, AutoResponse implements a cooldown system:
+
+- After sending a reply, a cooldown period is activated for that channel
+- During the cooldown, the bot will not reply regardless of the chance percentage
+- Cooldown data is stored per server and channel in `replyCooldowns.db`
+
+```javascript
+const cooldownTimeRemaining = await getCooldownTimeRemaining(serverId, channelId);
+if (cooldownTimeRemaining > 0) {
+    // Skip reply logic during cooldown
+    return;
+}
+```
+
+<Warning>
+  Cooldown times are managed automatically. Administrators cannot manually clear cooldowns through commands.
+</Warning>
+
+## User Opt-Out
+
+Users who don't want to receive replies can opt out at any time:
+
+<Card title="Opt-Out Protection" icon="shield">
+  Before any reply logic executes, AutoResponse checks if the message author is on the opt-out list. If they are, their messages are completely ignored by the auto-reply system.
+</Card>
+
+### How Opt-Out Works
+
+1. Users run `/optout` to add themselves to the opt-out list
+2. Their username is stored in `optoutlist.db` globally across all servers
+3. Messages from opted-out users are logged with a red `OptOut` prefix
+4. Users can run `/optin` at any time to start receiving replies again
+
+```javascript
+const optOutList = await getOptOutList();
+
+if (optOutList.includes(authorUsername)) {
+    // Skip all auto-reply logic
+    return;
+}
+```
+
+## Message Filtering
+
+The auto-reply system only processes specific types of messages:
+
+| Message Type | Processed? | Reason |
+|--------------|------------|--------|
+| Regular user messages | ✅ Yes | Primary target for auto-replies |
+| Bot messages | ❌ No | Prevents bot-to-bot loops |
+| Webhook messages | ❌ No | Avoids replying to automated posts |
+| System messages | ❌ No | System announcements shouldn't be replied to |
+| DMs | ❌ No | Only works in guild channels |
+| Opted-out users | ❌ No | Respects user preferences |
+| Cooldown active | ❌ No | Prevents spam |
+
+<Tip>
+  The bot logs all messages with color-coded prefixes showing the chance percentage, making it easy to monitor reply activity in your console.
+</Tip>
+
+## Reply Selection
+
+When the bot decides to reply:
+
+1. It queries the server's phrase database
+2. Randomly selects one phrase from all available phrases
+3. Sends the phrase as a reply to the triggering message
+4. Updates the leaderboard for the message author
+5. Resets the reply chance back to 6%
+
+From `utils/reply.js:36-42`:
+
+```javascript
+const phrases = await getPhrases(db);
+
+if (phrases.length > 0) {
+    const randomIndex = Math.floor(Math.random() * phrases.length);
+    const randomPhrase = phrases[randomIndex];
+    
+    await message.reply({
+        content: randomPhrase,
+        allowedMentions: { repliedUser: false },
+    });
+}
+```
+
+<Note>
+  Replies use Discord's reply feature but with `allowedMentions: { repliedUser: false }` to avoid pinging the user.
+</Note>
+
+## Monitoring Reply Activity
+
+AutoResponse provides detailed console logging for monitoring:
+
+- **Green percentage**: Current chance level for messages in reply channels
+- **Red "0%"**: Messages in non-reply channels
+- **Red "OptOut"**: Messages from opted-out users
+- **Red "Cooldown"**: Messages blocked by active cooldown
+- Server name, channel name, username, and message content are logged for each event
+
+## Best Practices
+
+<Accordion title="Configure multiple phrases">
+  Add a diverse collection of reply phrases to keep responses varied and interesting. Use `/addphrase` to build your phrase library.
+</Accordion>
+
+<Accordion title="Monitor chance progression">
+  Watch the console logs to see how quickly the reply chance increases in active channels. This helps you understand reply frequency.
+</Accordion>
+
+<Accordion title="Respect user preferences">
+  Always inform users about the `/optout` command so they can control their experience with the bot.
+</Accordion>
+
+<Accordion title="Choose appropriate channels">
+  Enable auto-replies in casual, social channels rather than important announcement or support channels.
+</Accordion>
+
+## Technical Details
+
+Reply chance data is persisted in SQLite:
+
+- Database: `data/{serverId}.db`
+- Table: `replyChannels`
+- Schema: `(id TEXT PRIMARY KEY, chance INTEGER)`
+- Chance value is updated after every message in a reply channel
+
+The incremental system ensures replies feel natural and unpredictable while guaranteeing eventual responses in active channels.

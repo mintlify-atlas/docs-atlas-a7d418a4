@@ -1,0 +1,329 @@
+---
+title: Environment Variables
+description: Complete reference for AutoResponse environment variables
+---
+
+## Overview
+
+AutoResponse uses environment variables for configuration. These are stored in a `.env` file in the project root directory.
+
+<Warning>
+  Never commit your `.env` file to version control! Add it to `.gitignore` to prevent accidentally exposing sensitive credentials.
+</Warning>
+
+## Required Variables
+
+These environment variables are essential for the bot to function:
+
+### TOKEN
+
+**Type:** `string` (required)
+
+**Usage:** `src/client.js:24`
+
+Your Discord bot token from the Discord Developer Portal.
+
+```env
+TOKEN=your_discord_bot_token_here
+```
+
+<Accordion title="How to Get Your Token">
+  1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+  2. Select your application
+  3. Navigate to the **Bot** section
+  4. Click **Reset Token** and copy the token
+  
+  <Warning>
+    Your bot token is like a password. Never share it publicly or commit it to version control!
+  </Warning>
+</Accordion>
+
+### OWNERID
+
+**Type:** `string` (required)
+
+**Usage:** `src/events/messageCreate.js:123`
+
+The Discord user ID of the bot owner. This grants access to owner-only message commands.
+
+```env
+OWNERID=123456789012345678
+```
+
+<Accordion title="How to Find Your User ID">
+  1. Enable Developer Mode in Discord:
+     - User Settings > Advanced > Developer Mode (toggle on)
+  2. Right-click your username anywhere in Discord
+  3. Click **Copy User ID**
+</Accordion>
+
+### PREFIX
+
+**Type:** `string` (required)
+
+**Usage:** `src/events/messageCreate.js:124`
+
+The prefix for message-based owner commands.
+
+```env
+PREFIX=!
+```
+
+<Note>
+  Only the bot owner (specified by `OWNERID`) can use message commands with this prefix.
+</Note>
+
+## Optional Variables
+
+These variables enable additional features but are not required for basic operation:
+
+### Email Configuration
+
+**Usage:** `utils/sendEmail.js:9`
+
+For sending error notifications via email (SendGrid):
+
+```env
+SendGrid_Server=smtp.sendgrid.net
+SendGrid_Port=587
+SendGrid_Username=your_sendgrid_username
+SendGrid_Password=your_sendgrid_password
+```
+
+<Tip>
+  These are optional. If not configured, the bot will simply skip email notifications for errors.
+</Tip>
+
+### APPID
+
+**Type:** `string` (optional)
+
+**Usage:** `utils/updateEmojis.js:7`
+
+Your Discord application ID, used for updating custom emojis.
+
+```env
+APPID=123456789012345678
+```
+
+<Accordion title="How to Find Your Application ID">
+  1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+  2. Select your application
+  3. Copy the **Application ID** from the General Information page
+</Accordion>
+
+### CLARIFAI_PAT
+
+**Type:** `string` (optional)
+
+**Usage:** `utils/scanImage.js:1`
+
+Personal Access Token for Clarifai API (image content moderation).
+
+```env
+CLARAFI_PAT=your_clarifai_personal_access_token
+```
+
+<Note>
+  This is used for image scanning and moderation features. If not configured, image moderation will be disabled.
+</Note>
+
+## .env.example Template
+
+Create a `.env` file in your project root with the following structure:
+
+```env
+# Discord Bot Configuration (Required)
+TOKEN=your_discord_bot_token_here
+OWNERID=your_discord_user_id_here
+PREFIX=!
+
+# Application Configuration (Optional)
+APPID=your_application_id_here
+
+# Email Notifications (Optional - SendGrid)
+SendGrid_Server=smtp.sendgrid.net
+SendGrid_Port=587
+SendGrid_Username=your_sendgrid_username
+SendGrid_Password=your_sendgrid_password
+
+# Image Moderation (Optional - Clarifai)
+CLARAFI_PAT=your_clarifai_personal_access_token
+```
+
+## Loading Environment Variables
+
+Environment variables are automatically loaded using the `dotenv` package:
+
+```javascript
+require('dotenv').config();
+```
+
+This occurs in `src/client.js:14` when the bot initializes.
+
+## Environment Variable Validation
+
+<Steps>
+  <Step title="Create .env File">
+    Copy the template above and create a `.env` file in your project root.
+  </Step>
+  
+  <Step title="Fill Required Variables">
+    At minimum, set `TOKEN`, `OWNERID`, and `PREFIX`.
+  </Step>
+  
+  <Step title="Test Configuration">
+    Start your bot and check the console for any errors related to missing variables:
+    
+    ```bash
+    npm start
+    ```
+  </Step>
+  
+  <Step title="Verify Bot Functionality">
+    - Check if the bot comes online in Discord
+    - Try a slash command like `/ping`
+    - Test owner commands with your configured prefix
+  </Step>
+</Steps>
+
+## Security Best Practices
+
+<Warning>
+  **Critical Security Reminders**
+  
+  - Never share your `.env` file
+  - Never commit `.env` to version control
+  - Never post environment variables in Discord, forums, or public channels
+  - Rotate tokens immediately if accidentally exposed
+</Warning>
+
+### .gitignore Configuration
+
+Ensure your `.gitignore` includes:
+
+```gitignore
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database files (optional - if you don't want to commit data)
+data/*.db
+```
+
+### Token Rotation
+
+If your bot token is compromised:
+
+<Steps>
+  <Step title="Regenerate Token">
+    Go to Discord Developer Portal > Bot > Reset Token
+  </Step>
+  
+  <Step title="Update .env File">
+    Replace the old token with the new one in your `.env` file
+  </Step>
+  
+  <Step title="Restart Bot">
+    Restart your bot to use the new token
+  </Step>
+  
+  <Step title="Revoke Old Access">
+    The old token is automatically invalidated when you reset it
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Bot Won't Start - Invalid Token">
+    **Error:** "An invalid token was provided"
+    
+    **Solution:**
+    - Verify your `TOKEN` in `.env` is correct
+    - Ensure there are no extra spaces or quotes
+    - Try regenerating the token in Discord Developer Portal
+    - Make sure the `.env` file is in the project root
+  </Accordion>
+  
+  <Accordion title="Owner Commands Not Working">
+    **Issue:** Owner commands with prefix don't work
+    
+    **Solution:**
+    - Verify your `OWNERID` matches your Discord user ID exactly
+    - Check that `PREFIX` is set correctly
+    - Ensure you're using the prefix in messages (e.g., `!command`)
+    - Check console logs for permission errors
+  </Accordion>
+  
+  <Accordion title="Environment Variables Not Loading">
+    **Issue:** Bot can't read environment variables
+    
+    **Solution:**
+    - Ensure `.env` file exists in project root
+    - Check that `dotenv` package is installed: `npm install dotenv`
+    - Verify `.env` file format (no spaces around `=`)
+    - Restart the bot after changing `.env`
+  </Accordion>
+  
+  <Accordion title="Email Notifications Not Working">
+    **Issue:** Not receiving error emails
+    
+    **Solution:**
+    - This is optional functionality - bot works without it
+    - Verify all SendGrid variables are set correctly
+    - Check SendGrid account status and credentials
+    - Look for email-related errors in console logs
+  </Accordion>
+</AccordionGroup>
+
+## Development vs Production
+
+For different environments, you can use multiple `.env` files:
+
+### Development
+
+```env title=".env.development"
+TOKEN=dev_bot_token
+OWNERID=your_user_id
+PREFIX=dev!
+```
+
+### Production
+
+```env title=".env.production"
+TOKEN=prod_bot_token
+OWNERID=your_user_id
+PREFIX=!
+SendGrid_Server=smtp.sendgrid.net
+SendGrid_Port=587
+SendGrid_Username=prod_username
+SendGrid_Password=prod_password
+```
+
+<Tip>
+  Use different bot tokens for development and production to avoid conflicts and ensure testing doesn't affect your live bot.
+</Tip>
+
+## Next Steps
+
+After configuring your environment variables:
+
+<CardGroup cols={2}>
+  <Card title="Initial Setup" icon="rocket" href="/configuration/setup">
+    Complete the initial bot setup process
+  </Card>
+  
+  <Card title="Database Structure" icon="database" href="/configuration/database">
+    Learn about the bot's database architecture
+  </Card>
+  
+  <Card title="Permissions" icon="shield-check" href="/configuration/permissions">
+    Configure Discord permissions properly
+  </Card>
+  
+  <Card title="Slash Commands" icon="terminal" href="/commands/slash-commands">
+    Start using bot commands
+  </Card>
+</CardGroup>

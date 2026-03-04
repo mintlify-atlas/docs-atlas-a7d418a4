@@ -1,0 +1,659 @@
+---
+title: Troubleshooting Guide
+description: Solutions to common issues and problems when running AutoResponse
+---
+
+## Common Setup Issues
+
+### Bot Won't Start
+
+<AccordionGroup>
+  <Accordion title="Error: Invalid Token">
+    **Problem**: Bot fails to login with "Invalid Token" error.
+    
+    **Symptoms**:
+    ```
+    Error: An invalid token was provided.
+        at WebSocketManager.connect
+    ```
+    
+    **Solution**:
+    <Steps>
+      <Step title="Verify Token in .env">
+        Check that your `.env` file contains the correct bot token:
+        ```bash
+        TOKEN=your_bot_token_here
+        ```
+      </Step>
+      
+      <Step title="Regenerate Token">
+        If the token is old or compromised:
+        1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+        2. Select your application
+        3. Go to "Bot" section
+        4. Click "Reset Token"
+        5. Copy the new token to your `.env` file
+      </Step>
+      
+      <Step title="Check for Extra Spaces">
+        Ensure there are no spaces or quotes around the token:
+        ```bash
+        # Correct
+        TOKEN=MTIzNDU2Nzg5MDEyMzQ1Njc4.GhI_Jk.LmNoPqRsTuVwXyZ123456789
+        
+        # Incorrect
+        TOKEN="MTIzNDU2..." # No quotes
+        TOKEN= MTIzNDU2... # No space after =
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+  
+  <Accordion title="Error: Cannot Find Module">
+    **Problem**: Missing dependencies when starting the bot.
+    
+    **Symptoms**:
+    ```
+    Error: Cannot find module 'discord.js'
+    ```
+    
+    **Solution**:
+    ```bash
+    # Install all dependencies
+    npm install
+    
+    # Or if using yarn
+    yarn install
+    
+    # For specific missing modules
+    npm install discord.js sqlite3 dotenv colors
+    ```
+    
+    <Warning>
+      Always run `npm install` after cloning the repository or pulling updates.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="Bot Connects But Doesn't Respond">
+    **Problem**: Bot comes online but doesn't react to commands or messages.
+    
+    **Causes**:
+    1. Missing required intents
+    2. Insufficient permissions
+    3. Commands not registered
+    
+    **Solution**:
+    <Steps>
+      <Step title="Verify Intents">
+        Check `src/intents.js` includes required intents:
+        ```javascript
+        const INTENTS = [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.MessageContent, // Required!
+            GatewayIntentBits.GuildMembers,
+        ];
+        ```
+      </Step>
+      
+      <Step title="Enable Privileged Intents">
+        In Discord Developer Portal:
+        1. Go to your application
+        2. Navigate to "Bot" section
+        3. Enable "Message Content Intent"
+        4. Enable "Server Members Intent"
+        5. Save changes and restart bot
+      </Step>
+      
+      <Step title="Check Bot Permissions">
+        Ensure bot has these permissions in your server:
+        - Read Messages/View Channels
+        - Send Messages
+        - Send Messages in Threads
+        - Embed Links
+        - Attach Files
+        - Read Message History
+        - Add Reactions
+      </Step>
+    </Steps>
+  </Accordion>
+</AccordionGroup>
+
+## Database Errors
+
+### SQLite Connection Issues
+
+<Accordion title="Error: ENOENT - No Such File or Directory">
+  **Problem**: Bot can't create or access database files.
+  
+  **Symptoms**:
+  ```
+  Error: ENOENT: no such file or directory, open '/path/to/data/serverId.db'
+  ```
+  
+  **Solution**:
+  <Steps>
+    <Step title="Create Data Directory">
+      ```bash
+      mkdir -p data
+      chmod 755 data
+      ```
+    </Step>
+    
+    <Step title="Check Write Permissions">
+      ```bash
+      # Check current permissions
+      ls -la
+      
+      # Fix if needed
+      chmod -R 755 .
+      ```
+    </Step>
+    
+    <Step title="Verify Path in Code">
+      Ensure database paths use `path.join()` correctly:
+      ```javascript
+      const dbPath = path.join(__dirname, '..', 'data', 'database.db');
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+<Accordion title="Error: Database is Locked">
+  **Problem**: SQLite database is locked by another process.
+  
+  **Symptoms**:
+  ```
+  Error: SQLITE_BUSY: database is locked
+  ```
+  
+  **Solutions**:
+  
+  1. **Close Existing Connections**:
+  ```javascript
+  // Always close databases
+  try {
+      // Database operations
+  } finally {
+      db.close();
+  }
+  ```
+  
+  2. **Check for Multiple Bot Instances**:
+  ```bash
+  # Find running node processes
+  ps aux | grep node
+  
+  # Kill if needed
+  pkill -f "node src/client.js"
+  ```
+  
+  3. **Remove Lock Files** (last resort):
+  ```bash
+  # Stop bot first
+  rm data/*.db-journal
+  rm data/*.db-wal
+  ```
+  
+  <Warning>
+    Only remove lock files when the bot is completely stopped to avoid data corruption.
+  </Warning>
+</Accordion>
+
+<Accordion title="Database Corruption">
+  **Problem**: Database file is corrupted and cannot be opened.
+  
+  **Symptoms**:
+  ```
+  Error: file is not a database
+  Error: database disk image is malformed
+  ```
+  
+  **Recovery Steps**:
+  
+  1. **Backup Current Database**:
+  ```bash
+  cp data/serverId.db data/serverId.db.backup
+  ```
+  
+  2. **Try SQLite Recovery**:
+  ```bash
+  sqlite3 data/serverId.db ".recover" | sqlite3 data/serverId_recovered.db
+  ```
+  
+  3. **Rebuild Database** (if recovery fails):
+  ```bash
+  # Remove corrupted database
+  rm data/serverId.db
+  
+  # Bot will create new database on next start
+  npm start
+  ```
+  
+  <Note>
+    You'll need to reconfigure server settings and re-add phrases after rebuilding.
+  </Note>
+</Accordion>
+
+## Command Issues
+
+### Slash Commands Not Appearing
+
+<Accordion title="Commands Don't Show in Discord">
+  **Problem**: Slash commands aren't visible when typing `/`.
+  
+  **Solutions**:
+  
+  <Steps>
+    <Step title="Check Command Registration">
+      Look for this message in console on startup:
+      ```
+      Successfully registered application commands. Total commands: 5
+      ```
+      
+      If not present, commands failed to register.
+    </Step>
+    
+    <Step title="Verify Bot Permissions">
+      When inviting the bot, ensure you include:
+      - `applications.commands` scope
+      - `bot` scope
+      
+      Reinvite URL format:
+      ```
+      https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=274878221376&scope=bot%20applications.commands
+      ```
+    </Step>
+    
+    <Step title="Force Command Refresh">
+      Commands can take up to 1 hour to update globally. To refresh immediately:
+      
+      1. Kick the bot from your server
+      2. Reinvite with correct permissions
+      3. Wait 5 minutes
+      4. Check for commands
+    </Step>
+    
+    <Step title="Check Registration Errors">
+      Enable debug logging in `utils/registerCommands.js`:
+      ```javascript
+      try {
+          const registeredCommands = await rest.put(
+              Routes.applicationCommands(client.user.id),
+              { body: commands }
+          );
+          console.log('Registered:', registeredCommands);
+      } catch (error) {
+          console.error('Registration failed:', error);
+      }
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+### Command Responses Timeout
+
+<Accordion title="Interaction Failed Error">
+  **Problem**: Commands timeout with "This interaction failed" message.
+  
+  **Causes**:
+  - Command takes longer than 3 seconds to respond
+  - Command code has errors
+  - Database queries are slow
+  
+  **Solution**:
+  
+  ```javascript
+  module.exports = {
+      data: new SlashCommandBuilder()
+          .setName('slowcommand')
+          .setDescription('A slow command'),
+      async execute(interaction) {
+          // Defer immediately for long operations
+          await interaction.deferReply();
+          
+          try {
+              // Long operation here
+              const result = await longDatabaseQuery();
+              
+              // Edit the deferred reply
+              await interaction.editReply({
+                  content: 'Operation complete!'
+              });
+          } catch (error) {
+              await interaction.editReply({
+                  content: 'Error: ' + error.message
+              });
+          }
+      }
+  };
+  ```
+  
+  <Tip>
+    Always use `deferReply()` for operations that might take more than 2 seconds.
+  </Tip>
+</Accordion>
+
+## Bot Reply Issues
+
+### Bot Doesn't Reply to Messages
+
+<AccordionGroup>
+  <Accordion title="Check Reply Channel Configuration">
+    **Problem**: Bot is in server but not replying to any messages.
+    
+    **Diagnosis**:
+    ```bash
+    # Check console for message logs
+    # You should see:
+    0% - ServerName - #channel - username - message
+    
+    # If you see 0%, the channel is not configured
+    ```
+    
+    **Solution**:
+    Use the `/settings` command to add reply channels:
+    ```
+    /settings action:add-channel channel:#general
+    ```
+    
+    Or add directly to database:
+    ```sql
+    INSERT INTO replyChannels (id, chance) VALUES ('channel_id', 6);
+    ```
+  </Accordion>
+  
+  <Accordion title="Check for Opt-Out Users">
+    **Problem**: Bot doesn't reply to specific users.
+    
+    **Check opt-out list**:
+    ```sql
+    SELECT * FROM OptOutList;
+    ```
+    
+    **Remove user from opt-out**:
+    ```sql
+    DELETE FROM OptOutList WHERE userTag = 'Username#1234';
+    ```
+  </Accordion>
+  
+  <Accordion title="Reply Cooldown Active">
+    **Problem**: Bot replied once but won't reply again.
+    
+    **Explanation**: Cooldown system prevents spam.
+    
+    **Check cooldown**:
+    ```sql
+    SELECT * FROM cooldowns WHERE serverId = 'server_id' AND channelId = 'channel_id';
+    ```
+    
+    **Clear cooldown** (for testing):
+    ```sql
+    DELETE FROM cooldowns WHERE serverId = 'server_id';
+    ```
+  </Accordion>
+  
+  <Accordion title="No Phrases Configured">
+    **Problem**: Channel is configured but bot has nothing to say.
+    
+    **Check phrases**:
+    ```sql
+    SELECT * FROM phrases;
+    ```
+    
+    **Add phrases**:
+    ```sql
+    INSERT INTO phrases (phrase) VALUES ('Hello!');
+    INSERT INTO phrases (phrase) VALUES ('Hi there!');
+    INSERT INTO phrases (phrase) VALUES ('Hey!');
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Permission Errors
+
+### Missing Permissions
+
+<Card title="Error: Missing Permissions" icon="lock">
+  **Problem**: Bot can't perform actions due to missing permissions.
+  
+  **Common Errors**:
+  ```
+  DiscordAPIError: Missing Permissions
+  DiscordAPIError: Missing Access
+  ```
+  
+  **Required Permissions**:
+  
+  | Feature | Required Permission |
+  |---------|--------------------|
+  | Read messages | `ViewChannel` |
+  | Send replies | `SendMessages` |
+  | Add reactions | `AddReactions` |
+  | Embed links | `EmbedLinks` |
+  | Attach files | `AttachFiles` |
+  | Manage messages | `ManageMessages` (optional) |
+  | Kick members | `KickMembers` (if needed) |
+  
+  **How to Fix**:
+  1. Go to Server Settings → Roles
+  2. Find bot's role
+  3. Enable required permissions
+  4. Check channel-specific overrides
+  5. Ensure bot role is above target roles in hierarchy
+</Card>
+
+### Channel Access Issues
+
+```javascript
+// Check if bot can see channel
+if (!channel.permissionsFor(client.user).has('ViewChannel')) {
+    console.log('Bot cannot see this channel');
+}
+
+// Check if bot can send messages
+if (!channel.permissionsFor(client.user).has('SendMessages')) {
+    console.log('Bot cannot send messages here');
+}
+```
+
+## Logging & Debugging
+
+### Enable Debug Logging
+
+<Steps>
+  <Step title="Check Console Output">
+    All events are logged to console with timestamps and color coding:
+    ```
+    12:34:56    ServerName - #channel - username - message
+    12:34:57    ServerName - #channel - username - /command
+    ```
+  </Step>
+  
+  <Step title="Check Database Logs">
+    Open the logs database:
+    ```bash
+    sqlite3 data/logs.db
+    ```
+    
+    Query today's logs:
+    ```sql
+    SELECT * FROM "03-04-2026" ORDER BY time DESC LIMIT 50;
+    ```
+  </Step>
+  
+  <Step title="Add Debug Logging">
+    Add temporary debug logs in your code:
+    ```javascript
+    const { Debug } = require('./utils/logging');
+    
+    Debug('Variable value: ' + JSON.stringify(variable));
+    ```
+  </Step>
+</Steps>
+
+### Log File Locations
+
+```
+project/
+├── data/
+│   ├── logs.db              # All console logs
+│   ├── serverId.db          # Server settings
+│   ├── leaderboards.db      # User statistics
+│   ├── optoutlist.db        # Opted-out users
+│   └── replyCooldowns.db    # Reply cooldowns
+```
+
+## Performance Issues
+
+### High Memory Usage
+
+<Accordion title="Memory Leak Detection">
+  **Check memory usage**:
+  ```javascript
+  const used = process.memoryUsage();
+  console.log(`Memory: ${Math.round(used.heapUsed / 1024 / 1024)} MB`);
+  ```
+  
+  **Common causes**:
+  1. Not closing database connections
+  2. Event listener accumulation
+  3. Large cache size
+  
+  **Solutions**:
+  ```javascript
+  // Always close databases
+  db.close();
+  
+  // Remove listeners when done
+  client.removeListener('messageCreate', listener);
+  
+  // Clear caches periodically
+  client.sweepMessages();
+  ```
+</Accordion>
+
+### Slow Response Times
+
+<Accordion title="Optimize Database Queries">
+  **Problem**: Commands take too long to respond.
+  
+  **Solutions**:
+  
+  1. **Add indexes**:
+  ```sql
+  CREATE INDEX idx_userid ON current(userID);
+  CREATE INDEX idx_channelid ON replyChannels(id);
+  ```
+  
+  2. **Use prepared statements**:
+  ```javascript
+  const stmt = db.prepare('SELECT * FROM phrases WHERE id = ?');
+  stmt.get([id], callback);
+  stmt.finalize();
+  ```
+  
+  3. **Cache frequently accessed data**:
+  ```javascript
+  const cache = new Map();
+  
+  if (cache.has(serverId)) {
+      return cache.get(serverId);
+  }
+  
+  const settings = await getSettings(serverId);
+  cache.set(serverId, settings);
+  ```
+</Accordion>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/notdylandover/AutoResponse/issues">
+    Report bugs or request features on GitHub
+  </Card>
+  
+  <Card title="Discord Server" icon="discord" href="https://discord.gg/36tkJQPkT9">
+    Join the support server for live help
+  </Card>
+  
+  <Card title="Check Logs" icon="file-lines">
+    Always check `data/logs.db` before asking for help
+  </Card>
+  
+  <Card title="Provide Details" icon="circle-info">
+    Include error messages, logs, and steps to reproduce
+  </Card>
+</CardGroup>
+
+## Useful Commands for Debugging
+
+```bash
+# Check if bot process is running
+ps aux | grep node
+
+# Monitor logs in real-time
+tail -f npm-debug.log
+
+# Check database integrity
+sqlite3 data/database.db "PRAGMA integrity_check;"
+
+# List all tables in database
+sqlite3 data/database.db ".tables"
+
+# Export database to SQL
+sqlite3 data/database.db ".dump" > backup.sql
+
+# Test bot token validity
+curl -H "Authorization: Bot YOUR_TOKEN_HERE" \
+     https://discord.com/api/v10/users/@me
+```
+
+<Note>
+  Most issues can be resolved by checking the console output and database logs. Always check these first before seeking help.
+</Note>
+
+## Quick Fixes Checklist
+
+<Steps>
+  <Step title="Restart the Bot">
+    Many issues resolve with a simple restart
+    ```bash
+    # Stop
+    Ctrl+C
+    
+    # Start
+    npm start
+    ```
+  </Step>
+  
+  <Step title="Update Dependencies">
+    Ensure all packages are up to date
+    ```bash
+    npm update
+    ```
+  </Step>
+  
+  <Step title="Check Environment Variables">
+    Verify `.env` file has all required values
+    ```bash
+    cat .env
+    ```
+  </Step>
+  
+  <Step title="Clear Node Cache">
+    Remove cached modules and reinstall
+    ```bash
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Step>
+  
+  <Step title="Verify Bot Token">
+    Test token is valid and has required scopes
+  </Step>
+</Steps>
+
+<Warning>
+  If you encounter persistent issues, check the GitHub repository for known issues and recent updates that might affect your installation.
+</Warning>

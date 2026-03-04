@@ -1,0 +1,579 @@
+---
+title: Installation
+description: Self-host AutoResponse with complete control over your Discord bot instance
+---
+
+## Overview
+
+This guide walks you through setting up AutoResponse on your own server. Self-hosting gives you full control over the bot's behavior, data storage, and deployment environment.
+
+<Note>
+AutoResponse requires Node.js and uses SQLite for data storage, making it lightweight and easy to deploy on most systems.
+</Note>
+
+## Prerequisites
+
+<Steps>
+  <Step title="System Requirements">
+    - **Node.js** 16.x or higher
+    - **npm** or **yarn** package manager
+    - **Git** for cloning the repository
+    - At least 100MB free disk space
+    - Stable internet connection
+  </Step>
+  
+  <Step title="Discord Developer Account">
+    You'll need access to the Discord Developer Portal to create a bot application:
+    
+    - Visit [Discord Developer Portal](https://discord.com/developers/applications)
+    - Sign in with your Discord account
+  </Step>
+</Steps>
+
+## Creating a Discord Bot
+
+<Steps>
+  <Step title="Create Application">
+    1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+    2. Click **"New Application"**
+    3. Enter a name (e.g., "AutoResponse")
+    4. Accept the Developer Terms of Service
+    5. Click **"Create"**
+  </Step>
+  
+  <Step title="Configure Bot">
+    1. Navigate to the **"Bot"** section in the left sidebar
+    2. Click **"Add Bot"**
+    3. Click **"Reset Token"** and copy your bot token
+    
+    <Warning>
+    **Keep your bot token secret!** Never commit it to version control or share it publicly. Anyone with your token can control your bot.
+    </Warning>
+    
+    4. Under **Privileged Gateway Intents**, enable:
+       - ✅ Message Content Intent
+       - ✅ Server Members Intent
+       - ✅ Presence Intent
+  </Step>
+  
+  <Step title="Generate Invite Link">
+    1. Go to the **"OAuth2"** → **"URL Generator"** section
+    2. Under **Scopes**, select:
+       - ✅ `bot`
+       - ✅ `applications.commands`
+    3. Under **Bot Permissions**, select:
+       - ✅ Read Messages/View Channels
+       - ✅ Send Messages
+       - ✅ Read Message History
+       - ✅ Add Reactions
+       - ✅ Use Slash Commands
+    4. Copy the generated URL at the bottom
+    5. Open the URL in your browser and invite the bot to your server
+  </Step>
+</Steps>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone Repository">
+    Clone the AutoResponse source code to your server:
+    
+    ```bash
+    git clone https://github.com/yourusername/autoresponse.git
+    cd autoresponse
+    ```
+    
+    <Tip>
+    Replace `yourusername/autoresponse` with the actual repository URL.
+    </Tip>
+  </Step>
+  
+  <Step title="Install Dependencies">
+    Install required Node.js packages:
+    
+    ```bash
+    npm install
+    ```
+    
+    This installs all dependencies from `package.json`:
+    
+    ```json
+    {
+      "dependencies": {
+        "discord.js": "^14.17.3",
+        "dotenv": "^16.4.7",
+        "sqlite3": "^5.1.7",
+        "mongoose": "^8.9.5",
+        "express": "^4.21.2",
+        "colors": "^1.4.0",
+        "node-cron": "^3.0.3"
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Configure Environment Variables">
+    Create a `.env` file in the project root directory:
+    
+    ```bash
+    touch .env
+    ```
+    
+    Add your configuration:
+    
+    ```bash
+    # Required: Your Discord bot token
+    TOKEN=your_discord_bot_token_here
+    
+    # Required: Bot owner user ID for admin commands
+    OWNERID=your_discord_user_id
+    
+    # Required: Command prefix for owner commands
+    PREFIX=!
+    
+    # Optional: Enable debug logging
+    DEBUG_MODE=false
+    ```
+    
+    <Accordion title="How to find your Discord User ID">
+      1. Enable Developer Mode in Discord:
+         - User Settings → Advanced → Developer Mode (toggle on)
+      2. Right-click your username anywhere in Discord
+      3. Click "Copy User ID"
+      4. Paste into the `OWNERID` field
+    </Accordion>
+    
+    <Warning>
+    The `.env` file is automatically ignored by git (listed in `.gitignore`). Never commit this file to version control.
+    </Warning>
+  </Step>
+  
+  <Step title="Initialize Data Directory">
+    Create the data directory structure:
+    
+    ```bash
+    mkdir -p data/media
+    ```
+    
+    The bot will automatically create these database files on first run:
+    - `data/{serverId}.db` - Per-server configuration
+    - `data/optoutlist.db` - User opt-out list
+    - `data/replyCooldowns.db` - Reply cooldown tracking
+    - `data/disabledEvents.json` - Optional event configuration
+  </Step>
+</Steps>
+
+## Running the Bot
+
+### Start the Bot
+
+<Tabs>
+  <Tab title="Linux/macOS">
+    ```bash
+    node src/client.js
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    Use the included batch file:
+    
+    ```bash
+    run.bat
+    ```
+    
+    Or run directly:
+    
+    ```bash
+    node src/client.js
+    ```
+  </Tab>
+</Tabs>
+
+### Verify Startup
+
+You should see output similar to:
+
+```bash
+DiscordJS v14.17.3
+[INFO] Event: ready loaded
+[INFO] Event: messageCreate loaded
+[INFO] Event: interactionCreate loaded
+Bot is ready!
+```
+
+<Note>
+The bot logs all activity with color-coded output using the `colors` package. Check the console for message events, errors, and command execution.
+</Note>
+
+## Understanding the Architecture
+
+### Project Structure
+
+```
+autoresponse/
+├── src/
+│   ├── client.js              # Main bot initialization
+│   ├── intents.js             # Discord Gateway intents
+│   ├── partials.js            # Discord partials configuration
+│   └── events/
+│       ├── messageCreate.js   # Message event handler
+│       ├── ready.js           # Bot ready event
+│       └── interactionCreate.js # Slash command handler
+├── commands/
+│   ├── slash/                 # Slash commands
+│   │   ├── addphrase.js
+│   │   ├── addReplyChannel.js
+│   │   ├── listPhrases.js
+│   │   └── ...
+│   └── message/               # Text-based owner commands
+│       ├── update.js
+│       └── ...
+├── utils/
+│   ├── reply.js               # Core reply logic
+│   ├── getSettings.js         # Database settings retrieval
+│   ├── logging.js             # Logging utilities
+│   └── ...
+├── data/                      # Generated at runtime
+│   ├── {serverId}.db          # Per-server databases
+│   ├── optoutlist.db
+│   └── replyCooldowns.db
+├── .env                       # Environment configuration (create this)
+└── package.json
+```
+
+### Core Components
+
+<Accordion title="Client Initialization (src/client.js)">
+  The main entry point creates the Discord client with required intents:
+  
+  ```javascript
+  const client = new Discord.Client({
+      intents: INTENTS,
+      partials: PARTIALS,
+  });
+  
+  client.login(process.env.TOKEN);
+  ```
+  
+  - Loads all event handlers from `src/events/`
+  - Registers slash commands
+  - Sets bot presence every 15 seconds
+  - Starts express server for health checks
+</Accordion>
+
+<Accordion title="Message Handler (src/events/messageCreate.js)">
+  Processes every message in monitored channels:
+  
+  ```javascript
+  const db = initializeDatabase(serverId);
+  const settings = await getSettings(serverId, message.client);
+  const replyChannels = settings.replyChannels || [];
+  const replyChannel = replyChannels.find(channel => channel.id === message.channel.id);
+  
+  if (replyChannel) {
+      const randomChance = Math.random() * 100;
+      if (randomChance <= chance) {
+          replyToUser(message);
+      }
+  }
+  ```
+  
+  Key features:
+  - Filters out bots, webhooks, and system messages
+  - Checks opt-out list
+  - Manages probability system
+  - Downloads attachments to `data/media/`
+  - Tracks cooldowns
+</Accordion>
+
+<Accordion title="Database Schema">
+  Each server gets an SQLite database with these tables:
+  
+  **replyChannels table:**
+  ```sql
+  CREATE TABLE IF NOT EXISTS replyChannels (
+      id TEXT PRIMARY KEY,
+      chance INTEGER
+  )
+  ```
+  
+  **phrases table:**
+  ```sql
+  CREATE TABLE IF NOT EXISTS phrases (
+      phrase TEXT PRIMARY KEY
+  )
+  ```
+  
+  **trustedRoles table:**
+  ```sql
+  CREATE TABLE IF NOT EXISTS trustedRoles (
+      id TEXT PRIMARY KEY
+  )
+  ```
+</Accordion>
+
+## Production Deployment
+
+### Using PM2 (Recommended)
+
+PM2 is a production process manager for Node.js applications:
+
+<Steps>
+  <Step title="Install PM2">
+    ```bash
+    npm install -g pm2
+    ```
+  </Step>
+  
+  <Step title="Start Bot">
+    ```bash
+    pm2 start src/client.js --name autoresponse
+    ```
+  </Step>
+  
+  <Step title="Configure Auto-Restart">
+    ```bash
+    pm2 startup
+    pm2 save
+    ```
+  </Step>
+  
+  <Step title="Monitor">
+    ```bash
+    pm2 status          # Check status
+    pm2 logs autoresponse  # View logs
+    pm2 restart autoresponse  # Restart bot
+    ```
+  </Step>
+</Steps>
+
+### Using systemd
+
+Create a systemd service file at `/etc/systemd/system/autoresponse.service`:
+
+```ini
+[Unit]
+Description=AutoResponse Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/autoresponse
+ExecStart=/usr/bin/node src/client.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl enable autoresponse
+sudo systemctl start autoresponse
+sudo systemctl status autoresponse
+```
+
+### Using Docker
+
+Create a `Dockerfile`:
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+CMD ["node", "src/client.js"]
+```
+
+Build and run:
+
+```bash
+docker build -t autoresponse .
+docker run -d \
+  --name autoresponse \
+  --restart unless-stopped \
+  -v $(pwd)/data:/app/data \
+  --env-file .env \
+  autoresponse
+```
+
+<Tip>
+Mount the `data/` directory as a volume to persist databases across container restarts.
+</Tip>
+
+## Environment Variables Reference
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|----------|
+| `TOKEN` | Yes | Discord bot token from Developer Portal | `MTEx...` |
+| `OWNERID` | Yes | Discord user ID of the bot owner | `123456789012345678` |
+| `PREFIX` | Yes | Command prefix for owner commands | `!` |
+| `DEBUG_MODE` | No | Enable verbose logging (true/false) | `false` |
+
+<Warning>
+Owner commands (using `PREFIX`) are restricted to the user specified in `OWNERID`. These commands bypass normal permissions and should be protected.
+</Warning>
+
+## Backup and Maintenance
+
+### Backup Database
+
+Regularly backup your `data/` directory:
+
+```bash
+tar -czf autoresponse-backup-$(date +%Y%m%d).tar.gz data/
+```
+
+### Update Bot
+
+```bash
+git pull origin main
+npm install
+pm2 restart autoresponse  # or your process manager
+```
+
+### View Logs
+
+The bot uses colored console output for logging:
+
+```javascript
+// From utils/logging.js
+messageCreate(`${serverName.cyan} - ${channelName.cyan} - ${authorUsername.cyan}`);
+Error(`Error message here`);
+Warn(`Warning message`);
+```
+
+Redirect logs to a file:
+
+```bash
+node src/client.js >> bot.log 2>&1
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Bot doesn't start">
+    **Check:**
+    
+    1. Node.js version: `node --version` (should be 16+)
+    2. Dependencies installed: `npm install`
+    3. `.env` file exists with correct `TOKEN`
+    4. Token is valid in Discord Developer Portal
+    
+    **Common errors:**
+    ```
+    Error: TOKEN is not defined
+    → Check your .env file
+    
+    Error: Incorrect token provided
+    → Generate a new token in Developer Portal
+    ```
+  </Accordion>
+  
+  <Accordion title="Bot connects but commands don't work">
+    **Verify:**
+    
+    1. Bot has slash command permission when invited
+    2. Privileged intents enabled in Developer Portal
+    3. Command registration completed:
+       ```javascript
+       // Commands are registered automatically on startup
+       // Check console for: "Registered X commands"
+       ```
+    4. Bot has proper permissions in the channel
+  </Accordion>
+  
+  <Accordion title="Database errors">
+    **Check:**
+    
+    1. `data/` directory exists and is writable
+    2. SQLite3 installed correctly: `npm rebuild sqlite3`
+    3. No file permission issues: `chmod 755 data/`
+    4. Database files aren't corrupted:
+       ```bash
+       sqlite3 data/123456789.db "PRAGMA integrity_check;"
+       ```
+  </Accordion>
+  
+  <Accordion title="High memory usage">
+    The bot stores some data in memory:
+    
+    - Event handler cache
+    - Command collections
+    - Database connections
+    
+    **Reduce memory:**
+    - Disable attachment downloads (comment out download logic)
+    - Close database connections properly
+    - Restart bot periodically with PM2 or cron
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Protect Credentials">
+    - Never commit `.env` to version control
+    - Use environment variables or secrets manager
+    - Rotate bot token if exposed
+    - Restrict `OWNERID` commands to trusted users
+  </Step>
+  
+  <Step title="File Permissions">
+    ```bash
+    chmod 600 .env              # Owner read/write only
+    chmod 755 data/             # Directory accessible
+    chmod 644 data/*.db         # Database files readable
+    ```
+  </Step>
+  
+  <Step title="Firewall Configuration">
+    If running a web server (Express), restrict access:
+    ```bash
+    # Only allow local connections to web interface
+    ufw allow from 127.0.0.1 to any port 3000
+    ```
+  </Step>
+  
+  <Step title="Regular Updates">
+    Keep dependencies updated:
+    ```bash
+    npm outdated
+    npm update
+    npm audit fix
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+Your bot is now running! Continue with:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Configure channels, add phrases, and test your first auto-reply
+  </Card>
+  
+  <Card title="Advanced Features" icon="gear">
+    Explore cooldown customization, trusted roles, and logging (coming soon)
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+If you encounter issues:
+
+1. Check console output for detailed error messages
+2. Review Discord Developer Portal for permission issues
+3. Verify `.env` configuration matches requirements
+4. Test with a minimal configuration first
+5. Check database file permissions in `data/` directory

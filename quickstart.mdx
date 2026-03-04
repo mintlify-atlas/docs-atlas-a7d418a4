@@ -1,80 +1,283 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get AutoResponse up and running in your Discord server in under 5 minutes
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, make sure you have:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- **Administrator permissions** on your Discord server
+- **Manage Channels permission** to configure AutoResponse
+- A running AutoResponse bot instance (either hosted or [self-hosted](/installation))
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+This guide assumes you already have AutoResponse invited to your server. If you're self-hosting, complete the [installation guide](/installation) first.
 </Note>
+
+## Setup Steps
+
+<Steps>
+  <Step title="Invite the Bot">
+    Invite AutoResponse to your Discord server with the required permissions:
+    
+    **Required Permissions:**
+    - Read Messages/View Channels
+    - Send Messages
+    - Read Message History
+    - Add Reactions
+    
+    The bot will appear offline until properly configured and started.
+    
+    <Tip>
+    Grant "Manage Channels" permission to administrators who need to configure reply channels and phrases.
+    </Tip>
+  </Step>
+  
+  <Step title="Add a Reply Channel">
+    Designate a channel where AutoResponse should monitor and reply to messages:
+    
+    ```bash
+    /addreplychannel channel:#your-channel
+    ```
+    
+    **Example:**
+    ```bash
+    /addreplychannel channel:#general
+    ```
+    
+    <Note>
+    Each channel starts with a 6% reply probability that increases by 1% with each message, capping at 100%.
+    </Note>
+    
+    **What happens:**
+    - Channel is added to the database with initial 6% reply chance
+    - Bot begins monitoring messages in this channel
+    - Probability tracking starts immediately
+  </Step>
+  
+  <Step title="Add Reply Phrases">
+    Build your phrase library by adding responses the bot will randomly select from:
+    
+    ```bash
+    /addphrase phrase:"Your custom reply here"
+    ```
+    
+    **Examples:**
+    ```bash
+    /addphrase phrase:"Hello there! 👋"
+    /addphrase phrase:"Interesting point!"
+    /addphrase phrase:"I couldn't agree more"
+    /addphrase phrase:"That's what I was thinking"
+    ```
+    
+    <Tip>
+    Add at least 5-10 phrases for variety. The bot randomly selects one phrase each time it replies.
+    </Tip>
+    
+    **Implementation detail:**
+    ```javascript
+    // From utils/reply.js
+    const phrases = await getPhrases(db);
+    const randomIndex = Math.floor(Math.random() * phrases.length);
+    const randomPhrase = phrases[randomIndex];
+    ```
+  </Step>
+  
+  <Step title="Test It Out">
+    Send messages in your configured channel and watch AutoResponse work:
+    
+    1. Send several messages in the reply channel
+    2. The bot will reply based on the probability system:
+       - First message: 6% chance
+       - Second message: 7% chance
+       - Third message: 8% chance
+       - And so on...
+    3. After the bot replies, probability resets to 6%
+    
+    <Warning>
+    If no phrases are configured, the bot will monitor the channel but won't reply. Make sure you've added at least one phrase.
+    </Warning>
+  </Step>
+</Steps>
+
+## Understanding the Probability System
+
+AutoResponse uses a dynamic probability system to create natural-feeling interactions:
+
+```javascript
+// From src/events/messageCreate.js - Probability logic
+let chance = replyChannel ? replyChannel.chance : 0;
+const randomChance = Math.random() * 100;
+
+if (randomChance <= chance) {
+    replyToUser(message);
+    replyChannel.chance = 6; // Reset to 6%
+} else {
+    chance = Math.min(chance + 1, 100); // Increase by 1%
+}
+```
+
+<Accordion title="How Probability Works">
+  - **Initial State**: When a channel is added, it starts at 6% reply chance
+  - **Message Received**: Each message increases the chance by 1%
+  - **Reply Sent**: After replying, chance resets to 6%
+  - **Maximum**: Probability caps at 100% (guaranteed reply)
+  - **Per-Channel**: Each reply channel tracks its own probability independently
+</Accordion>
+
+## Additional Configuration
+
+### Managing Phrases
+
+<Tabs>
+  <Tab title="List Phrases">
+    View all configured phrases:
+    ```bash
+    /listphrases
+    ```
+  </Tab>
+  
+  <Tab title="Remove Phrase">
+    Delete a specific phrase:
+    ```bash
+    /removephrase phrase:"Phrase to remove"
+    ```
+  </Tab>
+</Tabs>
+
+### Managing Channels
+
+<Tabs>
+  <Tab title="Remove Channel">
+    Stop monitoring a channel:
+    ```bash
+    /removereplychannel channel:#your-channel
+    ```
+  </Tab>
+  
+  <Tab title="Pause Replies">
+    Temporarily disable replies without removing configuration:
+    ```bash
+    /pausereplies
+    ```
+  </Tab>
+  
+  <Tab title="Resume Replies">
+    Re-enable replies after pausing:
+    ```bash
+    /resumereplies
+    ```
+  </Tab>
+</Tabs>
+
+### User Privacy
+
+Users can opt out of bot interactions:
+
+```bash
+/optout  # Exclude yourself from bot replies
+/optin   # Re-enable bot interactions
+```
+
+<Note>
+Opt-out is stored globally in `optoutlist.db` and applies across all servers using the bot.
+</Note>
+
+## Monitoring & Statistics
+
+### Check Bot Status
+
+```bash
+/ping  # Check bot latency and response time
+```
+
+### View Leaderboard
+
+```bash
+/leaderboard  # See which users get replied to most often
+```
+
+The bot tracks reply statistics per user and displays a leaderboard:
+
+```javascript
+// From utils/reply.js
+updateLeaderboard(userTag, userID);
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Bot not responding">
+    **Possible causes:**
+    
+    1. No phrases configured - Add phrases with `/addphrase`
+    2. Channel not added - Use `/addreplychannel` to enable the channel
+    3. Low probability - Keep sending messages to increase reply chance
+    4. Cooldown active - Wait for the cooldown period to expire
+    5. User opted out - Check opt-out status
+    
+    **Debug steps:**
+    ```bash
+    /listphrases          # Verify phrases exist
+    /stats                # Check server configuration
+    ```
+  </Accordion>
+  
+  <Accordion title="Replies too frequent">
+    The probability system should naturally space out replies, but if replies feel too frequent:
+    
+    - Remove some reply channels to concentrate activity
+    - Ensure cooldown system is working properly
+    - Check that probability resets to 6% after each reply
+  </Accordion>
+  
+  <Accordion title="Permission errors">
+    Ensure the bot has these permissions in reply channels:
+    
+    - **Read Messages** - Monitor channel activity
+    - **Send Messages** - Post replies
+    - **Read Message History** - Context awareness
+    
+    Grant permissions via channel settings or role configuration.
+  </Accordion>
+</AccordionGroup>
+
+## What Messages Trigger Replies?
+
+AutoResponse monitors all messages in configured channels, but filters out:
+
+```javascript
+// From src/events/messageCreate.js - Message filtering
+if (message.author.bot) return;        // Ignore bots
+if (message.webhookId) return;         // Ignore webhooks
+if (message.author.system) return;     // Ignore system messages
+if (optOutList.includes(authorUsername)) return; // Respect opt-outs
+```
+
+<Tip>
+**Best Practice**: Configure reply channels for high-traffic areas like #general or #memes where natural conversation happens. Avoid bot channels or announcement channels.
+</Tip>
+
+## Next Steps
+
+Now that AutoResponse is running:
+
+<CardGroup cols={2}>
+  <Card title="Self-Host" icon="server" href="/installation">
+    Learn how to deploy your own instance with full control
+  </Card>
+  
+  <Card title="Advanced Config" icon="gear">
+    Explore cooldown tuning, trusted roles, and logging options (coming soon)
+  </Card>
+</CardGroup>
+
+## Need Help?
+
+If you encounter issues:
+
+1. Check the bot's console output for error messages
+2. Verify your `data/` directory contains database files
+3. Review the [installation guide](/installation) for environment setup
+4. Check Discord permissions in channel settings

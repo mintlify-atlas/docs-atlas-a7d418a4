@@ -1,0 +1,127 @@
+---
+title: Introduction
+description: AutoResponse is a Discord bot that automatically replies to messages with custom phrases based on configurable triggers and probability
+---
+
+## What is AutoResponse?
+
+AutoResponse is a Discord bot that adds dynamic auto-reply functionality to your server. It monitors designated channels and automatically responds to user messages with random phrases from your custom phrase library, using a probability-based system that creates natural, engaging interactions.
+
+<Note>
+AutoResponse uses a smart probability system that increases the chance of a reply with each message, making responses feel natural rather than spammy.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Probability-Based Replies" icon="dice">
+    Intelligent reply system that gradually increases response probability from 6% to 100% with each message
+  </Card>
+  
+  <Card title="Custom Phrases" icon="message">
+    Create unlimited custom reply phrases that the bot randomly selects from when responding
+  </Card>
+  
+  <Card title="Channel Control" icon="hashtag">
+    Choose specific channels where AutoResponse is active with per-channel probability tracking
+  </Card>
+  
+  <Card title="User Privacy" icon="shield">
+    Built-in opt-out system allows users to exclude themselves from bot interactions
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Channel Setup">
+    Designate specific text channels where AutoResponse should monitor messages using `/addreplychannel`
+  </Step>
+  
+  <Step title="Add Phrases">
+    Build your phrase library by adding custom responses with `/addphrase`
+  </Step>
+  
+  <Step title="Automatic Replies">
+    The bot monitors messages in designated channels and replies based on probability:
+    - Starts at 6% chance per message
+    - Increases by 1% with each message (up to 100%)
+    - Resets to 6% after a reply occurs
+  </Step>
+  
+  <Step title="Cooldown System">
+    After replying, channels enter a cooldown period to prevent spam and maintain natural conversation flow
+  </Step>
+</Steps>
+
+## Technical Overview
+
+### Built With
+
+- **Discord.js v14** - Modern Discord API wrapper
+- **SQLite3** - Lightweight database for phrases, channels, and user preferences
+- **Node.js** - JavaScript runtime environment
+
+### Architecture
+
+```javascript
+// Core reply logic from utils/reply.js
+const phrases = await getPhrases(db);
+const randomIndex = Math.floor(Math.random() * phrases.length);
+const randomPhrase = phrases[randomIndex];
+
+await message.reply({
+    content: randomPhrase,
+    allowedMentions: { repliedUser: false },
+});
+```
+
+The bot uses an event-driven architecture that listens for Discord events and processes them through dedicated handlers:
+
+- **Event System**: Modular event handlers in `src/events/`
+- **Command System**: Slash commands for configuration and management
+- **Database**: Per-server SQLite databases for isolated configuration
+- **Cooldown Management**: Separate database tracking for reply cooldowns
+
+<Tip>
+Each Discord server gets its own isolated database file (`{serverId}.db`), ensuring complete separation of phrases, channels, and settings.
+</Tip>
+
+## Use Cases
+
+<Accordion title="Community Engagement">
+  Keep your server active with automated responses that surprise and delight members. Perfect for meme channels, general chat, and casual conversation spaces.
+</Accordion>
+
+<Accordion title="Server Personality">
+  Give your server a unique personality by crafting custom phrases that reflect your community's culture, inside jokes, and shared interests.
+</Accordion>
+
+<Accordion title="User Interaction">
+  Encourage participation and create memorable moments with unexpected bot replies that feel natural within the conversation flow.
+</Accordion>
+
+## Data Storage
+
+AutoResponse stores all configuration locally in SQLite databases:
+
+- **Per-Server Databases** (`data/{serverId}.db`): Phrases, reply channels, trusted roles
+- **Opt-Out Database** (`data/optoutlist.db`): Users who opted out of bot interactions
+- **Cooldown Database** (`data/replyCooldowns.db`): Channel cooldown timers
+- **Media Downloads** (`data/media/`): Optional attachment archiving
+
+<Warning>
+Make sure to regularly backup your `data/` directory to preserve your phrases and configuration.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get AutoResponse running in your server in under 5 minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Self-host AutoResponse for complete control over your instance
+  </Card>
+</CardGroup>

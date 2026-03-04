@@ -1,0 +1,426 @@
+---
+title: Message Commands
+description: Owner-only message commands for bot administration
+---
+
+Message commands are special prefix-based commands that are only available to the bot owner. These commands provide administrative control over the bot's operation.
+
+<Warning>
+  All message commands are restricted to the user specified in the `OWNERID` environment variable. No other users can execute these commands.
+</Warning>
+
+## Configuration
+
+Message commands require proper environment variables:
+
+```env
+OWNERID=your_discord_user_id
+PREFIX=!
+```
+
+- `OWNERID` - Your Discord user ID (required for command execution)
+- `PREFIX` - The command prefix (default: `!`)
+
+## How Message Commands Work
+
+Message commands are processed in `source/src/events/messageCreate.js`:
+
+```javascript
+const allowedUserId = process.env.OWNERID;
+const commandPrefix = process.env.PREFIX;
+
+if (message.author.id === allowedUserId) {
+    if (messageContent.startsWith(commandPrefix)) {
+        const commandName = messageContent.slice(commandPrefix.length).split(' ')[0];
+        const command = messageCommands.get(commandName);
+        
+        if (command) {
+            return await command.execute(message);
+        } else {
+            return message.react('❔');
+        }
+    }
+}
+```
+
+**Behavior:**
+- Commands are only processed if the author matches `OWNERID`
+- Invalid commands receive a ❔ reaction
+- Failed commands receive a ❌ reaction
+
+---
+
+## Available Commands
+
+### !me
+
+Send a message as the bot, optionally with attachments.
+
+**Owner Only:** Yes
+
+**Syntax:**
+```
+!me <message>
+```
+
+**Usage Examples:**
+```
+!me Hello everyone!
+!me Check out this image
+```
+
+**Behavior:**
+- Accepts text message and/or attachments
+- Deletes the original command message
+- Sends content as the bot
+- Returns error if no message or attachment provided
+
+**Implementation Details:**
+```javascript
+const botMessage = message.content.split(' ').slice(1).join(' ');
+const attachments = message.attachments;
+
+if (!botMessage && !attachments.size) {
+    return message.reply('Please provide a message or attachment to send as the bot.');
+}
+
+message.delete();
+
+await message.channel.send({
+    content: botMessage || null,
+    files: attachments.map(attachment => attachment)
+});
+```
+
+**Use Cases:**
+- Sending announcements as the bot
+- Posting images or files through the bot
+- Creating bot-authored content
+
+---
+
+### !react
+
+Make the bot react to a specific message with a custom server emoji.
+
+**Owner Only:** Yes
+
+**Syntax:**
+```
+!react <messageId> <emojiId>
+```
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `messageId` | Snowflake | Yes | The ID of the message to react to |
+| `emojiId` | Snowflake | Yes | The ID of the emoji to use |
+
+**Usage Example:**
+```
+!react 1234567890123456789 987654321098765432
+```
+
+**Behavior:**
+- Requires exactly 2 arguments
+- Fetches the target message from the channel
+- Fetches the emoji from the server's emoji cache
+- Adds the reaction to the target message
+- Deletes the command message on success
+- Reacts with ❌ if message or emoji not found
+
+**Implementation Details:**
+```javascript
+const messageId = args[0];
+const emoteId = args[1];
+
+const targetMessage = await message.channel.messages.fetch(messageId);
+const emote = message.guild.emojis.cache.get(emoteId);
+
+await targetMessage.react(emote);
+await message.delete();
+```
+
+**Error Handling:**
+- Returns ❌ if incorrect number of arguments
+- Returns ❌ if message not found
+- Returns ❌ if emoji not found
+- Logs error stack trace on exception
+
+<Note>
+  To get a message ID, enable Developer Mode in Discord settings, then right-click a message and select "Copy ID". To get an emoji ID, type `\:emoji_name:` in chat.
+</Note>
+
+---
+
+### !rl
+
+Reload the bot by destroying the client and exiting the process.
+
+**Owner Only:** Yes
+
+**Syntax:**
+```
+!rl
+```
+
+**Behavior:**
+- Sends confirmation embed: "Reloaded Manager"
+- Destroys the Discord client connection
+- Exits the process with code 0
+- Process manager (like PM2) should automatically restart the bot
+
+**Implementation Details:**
+```javascript
+const embed = DoneEmbed(`Reloaded Manager`);
+await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false }});
+message.client.destroy();
+return process.exit(0);
+```
+
+<Warning>
+  This command requires a process manager (like PM2, systemd, or Docker) to automatically restart the bot. Without a process manager, the bot will go offline until manually restarted.
+</Warning>
+
+**Use Cases:**
+- Quick bot restart
+- Applying configuration changes
+- Recovering from stuck states
+
+---
+
+### !update
+
+Comprehensive update command that refreshes commands, updates libraries, updates emojis, and restarts the bot.
+
+**Owner Only:** Yes
+
+**Syntax:**
+```
+!update
+```
+
+**Behavior:**
+
+This command performs multiple operations in sequence:
+
+#### 1. Update Commands
+- Clears the command cache
+- Re-registers all slash commands with Discord API
+- Fetches and displays total command count
+- Shows embed: "Pushed commands to the client"
+
+#### 2. Update Libraries
+- Runs library update utility
+- Updates npm packages on the host system
+- Shows embed: "Finished library updates to the host"
+- Displays list of updated packages
+
+#### 3. Update Emojis
+- Runs emoji update utility
+- Refreshes bot's emoji cache
+- Shows embed: "Finished emoji updates to the client"
+
+#### 4. Restart Bot
+- Destroys client connection
+- Exits process (requires process manager to restart)
+
+**Implementation Details:**
+```javascript
+// Update commands
+await client.commands.clear();
+await registerCommands(client);
+const commandCount = await fetchCommandCount(client);
+
+const commandUpdatesEmbed = DoneEmbed(`Pushed commands to the client\n-# ${commandCount} total commands`);
+const updateMessage = await message.reply({ embeds: [commandUpdatesEmbed] });
+
+// Update Libraries
+const updatedLibraries = await updateLibraries();
+const libraryUpdatesEmbed = DoneEmbed(`Finished library updates to the host\n${updatedLibraries}`);
+await updateMessage.edit({ embeds: [commandUpdatesEmbed, libraryUpdatesEmbed] });
+
+// Update Emojis
+await updateEmojis();
+const emojiUpdatesEmbed = DoneEmbed(`Finished emoji updates to the client.`);
+await updateMessage.edit({ embeds: [commandUpdatesEmbed, libraryUpdatesEmbed, emojiUpdatesEmbed] });
+
+// Restart Client
+message.client.destroy();
+return process.exit(0);
+```
+
+**Error Handling:**
+- Reacts with ❌ on any error
+- Logs full error stack trace
+- Does not restart if errors occur
+
+**Use Cases:**
+- Applying code changes
+- Updating dependencies
+- Refreshing command definitions
+- Full bot maintenance cycle
+
+<Warning>
+  The `!update` command will temporarily take the bot offline during the restart process. Ensure a process manager is configured to handle automatic restarts.
+</Warning>
+
+---
+
+## Command Comparison
+
+| Command | Purpose | Restarts Bot | Updates Commands | Updates Dependencies |
+|---------|---------|--------------|------------------|---------------------|
+| !me | Send as bot | No | No | No |
+| !react | Add reaction | No | No | No |
+| !rl | Quick reload | Yes | No | No |
+| !update | Full update | Yes | Yes | Yes |
+
+---
+
+## Security Considerations
+
+### Owner Verification
+
+All message commands implement strict owner verification:
+
+```javascript
+const allowedUserId = process.env.OWNERID;
+
+if (message.author.id === allowedUserId) {
+    // Process command
+} else {
+    // Silently ignore
+}
+```
+
+**Security Features:**
+- Commands are silently ignored for non-owners
+- No error messages reveal command existence
+- Owner ID is environment-based, not hardcoded
+- No bypass or elevation mechanisms
+
+### Best Practices
+
+<Warning>
+  Never share your `OWNERID` or `.env` file. These commands provide full administrative control over the bot.
+</Warning>
+
+1. **Environment Variables:**
+   - Store `OWNERID` securely in `.env`
+   - Never commit `.env` to version control
+   - Use different prefixes in different environments
+
+2. **Process Management:**
+   - Always use a process manager (PM2, systemd, Docker)
+   - Configure automatic restarts
+   - Set up logging for restart events
+
+3. **Command Usage:**
+   - Use `!rl` for quick restarts
+   - Use `!update` for comprehensive updates
+   - Test changes before deploying to production
+
+---
+
+## Process Manager Setup
+
+Since `!rl` and `!update` both exit the process, you need a process manager:
+
+### PM2 Example
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start bot with PM2
+pm2 start source/index.js --name autoresponse
+
+# Configure auto-restart
+pm2 startup
+pm2 save
+
+# View logs
+pm2 logs autoresponse
+```
+
+### Docker Example
+
+```dockerfile
+FROM node:18
+WORKDIR /app
+COPY . .
+RUN npm install
+CMD ["node", "source/index.js"]
+# Docker will automatically restart on exit
+```
+
+### systemd Example
+
+```ini
+[Unit]
+Description=AutoResponse Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/opt/autoresponse
+ExecStart=/usr/bin/node source/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## Troubleshooting
+
+### Commands Not Working
+
+**Issue:** Message commands receive ❔ reaction or no response.
+
+**Solutions:**
+1. Verify `OWNERID` matches your Discord user ID
+2. Check `PREFIX` is correct
+3. Ensure command name is exact (case-sensitive)
+4. Check bot has read message permissions
+
+### Bot Not Restarting
+
+**Issue:** `!rl` or `!update` stops the bot permanently.
+
+**Solutions:**
+1. Install and configure a process manager
+2. Check process manager logs
+3. Verify restart policy is set to "always"
+4. Test manual restart: `pm2 restart autoresponse`
+
+### Update Failures
+
+**Issue:** `!update` command fails or reacts with ❌.
+
+**Solutions:**
+1. Check error logs for specific failure
+2. Verify npm dependencies are installable
+3. Ensure bot has write permissions for updates
+4. Test `updateLibraries()` and `updateEmojis()` utilities separately
+
+---
+
+## Source Code Reference
+
+### Command Files
+
+- `source/commands/message/me.js` - Send messages as bot
+- `source/commands/message/react.js` - React to messages
+- `source/commands/message/rl.js` - Reload bot
+- `source/commands/message/update.js` - Update and restart
+
+### Message Handler
+
+- `source/src/events/messageCreate.js:99-112` - Command loading
+- `source/src/events/messageCreate.js:132-147` - Owner verification and execution

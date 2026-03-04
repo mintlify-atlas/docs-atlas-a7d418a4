@@ -1,0 +1,619 @@
+---
+title: Utility Functions
+description: Comprehensive guide to AutoResponse utility modules and helper functions
+---
+
+## Overview
+
+AutoResponse includes a robust collection of utility modules in the `utils/` directory that handle logging, database operations, Discord interactions, and more. These utilities provide reusable functionality across the entire bot.
+
+## Logging Utilities
+
+### logging.js
+
+Comprehensive logging system with color-coded output and SQLite database storage.
+
+**Location**: `utils/logging.js`
+
+#### Core Logging Functions
+
+```javascript
+const { Error, Warn, Done, Info, Debug } = require('./utils/logging');
+
+// Error logging (red)
+Error('Something went wrong!');
+
+// Warning logging (yellow)
+Warn('This is a warning message');
+
+// Success logging (green)
+Done('Operation completed successfully');
+
+// Info logging (grey)
+Info('General information message');
+
+// Debug logging (grey, no DB storage)
+Debug('Debug information');
+```
+
+#### Event-Specific Logging
+
+Every Discord event has its own logging function with custom formatting:
+
+```javascript
+const { 
+    messageCreate, 
+    messageDelete, 
+    interactionCreate,
+    guildCreate,
+    guildMemberAdd 
+} = require('./utils/logging');
+
+// Log message creation (blue)
+messageCreate('ServerName - #channel - username - message content');
+
+// Log message deletion (red)
+messageDelete('ServerName - #channel - username - message (Deleted)');
+
+// Log interaction (magenta)
+interactionCreate('ServerName - #channel - username - /command');
+
+// Log guild join (green)
+guildCreate('Joined guild: ServerName (123456789)');
+
+// Log member join (green)
+guildMemberAdd('ServerName - username Joined (Approved)');
+```
+
+#### Database Logging
+
+All logs are automatically stored in `data/logs.db`:
+
+```javascript
+function dbOutput(type, message) {
+    const date = new Date();
+    const formattedDate = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${date.getFullYear()}`;
+    const time = date.toLocaleTimeString();
+    
+    // Creates a table per day: MM-DD-YYYY
+    // Columns: time, type, content
+    db.run(`CREATE TABLE IF NOT EXISTS "${formattedDate}" (time TEXT, type TEXT, content TEXT)`);
+    db.run(`INSERT INTO "${formattedDate}" (time, type, content) VALUES (?,?,?)`, 
+        [time, type, content]);
+}
+```
+
+<Note>
+  Logs are organized by date in separate tables, making it easy to query specific days. Color codes are stripped before storage.
+</Note>
+
+#### Available Event Loggers
+
+<AccordionGroup>
+  <Accordion title="Message Logging">
+    - `messageCreate()` - Blue color
+    - `messageDelete()` - Red color
+    - `messageUpdate()` - Yellow color
+    - `messageDeleteBulk()` - Red color
+  </Accordion>
+  
+  <Accordion title="Guild Logging">
+    - `guildCreate()` - Green color
+    - `guildDelete()` - Red color
+    - `guildUpdate()` - Yellow color
+    - `guildMemberAdd()` - Green color
+    - `guildMemberRemove()` - Red color
+    - `guildMemberUpdate()` - Yellow color
+  </Accordion>
+  
+  <Accordion title="Interaction Logging">
+    - `interactionCreate()` - Magenta color
+    - `autoModerationActionExecution()` - Magenta color
+  </Accordion>
+  
+  <Accordion title="Server Logging">
+    - `ServerError()` - Red with [SERVER] prefix
+    - `ServerLog()` - Magenta with [SERVER] prefix
+    - `ServerDone()` - Green with [SERVER] prefix
+  </Accordion>
+</AccordionGroup>
+
+## Discord Utilities
+
+### embeds.js
+
+Pre-built embed builders for consistent Discord message formatting.
+
+**Location**: `utils/embeds.js`
+
+#### Basic Embeds
+
+```javascript
+const { 
+    SuccessEmbed, 
+    ErrorEmbed, 
+    InfoEmbed, 
+    LoadingEmbed 
+} = require('./utils/embeds');
+
+// Success message (green)
+const embed = SuccessEmbed('Operation Complete', 'Your action was successful!');
+await interaction.reply({ embeds: [embed] });
+
+// Error message (red)
+const errorEmbed = ErrorEmbed('An error occurred: ' + error.message);
+await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+
+// Info message (default color)
+const infoEmbed = InfoEmbed('This is an informational message');
+await message.channel.send({ embeds: [infoEmbed] });
+
+// Loading indicator
+const loadingEmbed = LoadingEmbed('Processing', 'Please wait...');
+await interaction.reply({ embeds: [loadingEmbed] });
+```
+
+#### Specialized Embeds
+
+```javascript
+// Ping embed with latency info
+const { PingEmbed } = require('./utils/embeds');
+const pingEmbed = PingEmbed(
+    client.ws.ping,      // WebSocket ping
+    restPing,            // REST API ping
+    'g'                  // Color code for WS ping
+);
+
+// User info embed
+const { UserEmbed } = require('./utils/embeds');
+const userEmbed = UserEmbed(
+    user.tag,
+    user.id,
+    highestRole.name,
+    permissions,
+    badges,
+    createdTimestamp,
+    joinedTimestamp,
+    avatarURL,
+    bannerURL
+);
+
+// Server info embed
+const { ServerEmbed } = require('./utils/embeds');
+const serverEmbed = ServerEmbed(
+    guild.name,
+    guild.id,
+    roles.length,
+    guild.memberCount,
+    guild.emojis.cache.size,
+    guild.stickers.cache.size,
+    guild.description,
+    guild.iconURL(),
+    guild.bannerURL(),
+    guild.ownerId,
+    formattedCreatedAt,
+    features,
+    channels
+);
+```
+
+#### Fun & Utility Embeds
+
+```javascript
+// Coinflip result
+const { CoinflipEmbed } = require('./utils/embeds');
+const coinEmbed = CoinflipEmbed('Heads'); // or 'Tails'
+
+// Magic 8-ball
+const { BallEmbed } = require('./utils/embeds');
+const ballEmbed = BallEmbed(author, question, result);
+
+// Leaderboard
+const { Leaderboard } = require('./utils/embeds');
+const leaderboardEmbed = Leaderboard(
+    'Top Responders',
+    'Users with the most bot replies',
+    fields // Array of { name, value, inline }
+);
+
+// Stats display
+const { StatsEmbed } = require('./utils/embeds');
+const statsEmbed = StatsEmbed(
+    serverCount,
+    installCount,
+    shardCount,
+    uptime,
+    memoryUsage,
+    slashCommandsCount,
+    cpuUsage,
+    totalSessions,
+    remainingSessions
+);
+```
+
+<Tip>
+  All embeds automatically include the bot's branding (footer icon and text) and use the consistent color scheme from `utils/constants.js`.
+</Tip>
+
+### reply.js
+
+Handles automatic reply functionality with database integration.
+
+**Location**: `utils/reply.js`
+
+```javascript
+const replyToUser = require('./utils/reply');
+
+// Usage in messageCreate event
+await replyToUser(message);
+```
+
+**Functionality**:
+1. Retrieves random phrase from server database
+2. Updates user leaderboard statistics
+3. Sends reply with `allowedMentions: { repliedUser: false }`
+
+**Implementation**:
+```javascript
+module.exports = async (message) => {
+    const serverId = message.guild ? message.guild.id : "global";
+    const userTag = message.author.tag;
+    const userID = message.author.id;
+    const db = initializeDatabase(serverId);
+    
+    try {
+        const phrases = await getPhrases(db);
+        
+        if (phrases.length > 0) {
+            const randomIndex = Math.floor(Math.random() * phrases.length);
+            const randomPhrase = phrases[randomIndex];
+            
+            // Update leaderboard
+            updateLeaderboard(userTag, userID);
+            
+            // Send reply
+            await message.reply({
+                content: randomPhrase,
+                allowedMentions: { repliedUser: false },
+            });
+        }
+    } catch (error) {
+        Error(`Error replying to user: ${error.message}`);
+    } finally {
+        db.close();
+    }
+};
+```
+
+### setPresence.js
+
+Dynamically updates bot presence with statistics.
+
+**Location**: `utils/setPresence.js`
+
+```javascript
+const setPresence = require('./utils/setPresence');
+
+// Update presence every 15 seconds
+setInterval(() => {
+    setPresence(client);
+}, 15000);
+```
+
+**Features**:
+- Rotates between displaying total replies and unique users
+- Queries all leaderboard tables for accurate stats
+- Uses custom browser identifier for client type
+
+```javascript
+module.exports = async (client) => {
+    const activities = [
+        `${totalReplies} replies`,
+        `${uniqueUsers.size} users`
+    ];
+    
+    client.user.setPresence({
+        activities: [{
+            name: activities[activityIndex],
+            type: 4 // Custom status
+        }],
+        status: "online"
+    });
+    
+    activityIndex = (activityIndex + 1) % activities.length;
+};
+```
+
+## Database Utilities
+
+### getSettings.js
+
+Retrieves server-specific configuration from SQLite.
+
+**Location**: `utils/getSettings.js`
+
+```javascript
+const getSettings = require('./utils/getSettings');
+
+const settings = await getSettings(serverId, client);
+// Returns:
+// {
+//   replyChannels: [{ id: '123', chance: 6 }],
+//   trustedRoles: ['456', '789'],
+//   phrases: ['Hello!', 'Hi there!', 'Hey!']
+// }
+```
+
+**Database Tables**:
+- `replyChannels` - Channels where auto-reply is enabled with chance values
+- `trustedRoles` - Roles with trusted permissions
+- `phrases` - Custom reply phrases for the server
+
+### updateLeaderboard.js
+
+Tracks user reply statistics.
+
+**Location**: `utils/updateLeaderboard.js`
+
+```javascript
+const updateLeaderboard = require('./utils/updateLeaderboard');
+
+// Increment reply count for user
+updateLeaderboard(userTag, userID);
+```
+
+**Database Schema**:
+```sql
+CREATE TABLE IF NOT EXISTS current (
+    username TEXT,
+    userID TEXT PRIMARY KEY,
+    replies INTEGER DEFAULT 0,
+    groups TEXT
+)
+```
+
+**Behavior**:
+- Creates new user entry if not exists
+- Increments reply count by 1
+- Updates username if changed
+
+### getLeaderboards.js
+
+Initializes and verifies leaderboard database.
+
+**Location**: `utils/getLeaderboards.js`
+
+```javascript
+const getLeaderboards = require('./utils/getLeaderboards');
+
+// Initialize on bot startup
+getLeaderboards();
+```
+
+## Command Utilities
+
+### registerCommands.js
+
+Registers slash commands and context menu commands with Discord.
+
+**Location**: `utils/registerCommands.js`
+
+```javascript
+const { registerCommands } = require('./utils/registerCommands');
+
+// Register all commands (called in ready event)
+await registerCommands(client);
+```
+
+**Features**:
+- Discovers commands from `commands/slash/` and `commands/context/`
+- Registers with Discord REST API
+- Saves command IDs to `data/bot/commands.json`
+- Provides command count and status
+
+**Output**:
+```
+slash  ┓
+       ┣ ping
+       ┣ help
+       ┣ stats
+       ┗ settings
+context ┓
+        ┗ User Info
+Successfully registered application commands. Total commands: 5
+```
+
+## Content Processing
+
+### scanImage.js
+
+Scans images for NSFW content using Clarifai API.
+
+**Location**: `utils/scanImage.js`
+
+```javascript
+const { scanImage } = require('./utils/scanImage');
+
+// Returns true if NSFW score > 0.5
+const isNSFW = await scanImage(imageURL);
+
+if (isNSFW) {
+    await message.delete();
+    await message.channel.send('NSFW content detected and removed.');
+}
+```
+
+**Requirements**:
+- `CLARIFAI_PAT` environment variable
+- Clarifai API access
+
+**Configuration**:
+```javascript
+const modelId = 'nsfw-recognition';
+const threshold = 0.5; // 50% confidence
+```
+
+## Helper Utilities
+
+### constants.js
+
+Centralized constants and configuration values.
+
+**Location**: `utils/constants.js`
+
+```javascript
+const { COLORS, EMOJIS, LINKS, TEXT } = require('./utils/constants');
+
+// Color codes for embeds
+COLORS.default  // '#2b2d31'
+COLORS.blurple  // '#5865F2'
+COLORS.error    // '#cc0000'
+COLORS.done     // '#00cc00'
+COLORS.twitch   // '#9146FF'
+
+// Custom emojis
+EMOJIS.ico_checkmark  // <:ico_checkmark:1332185724218721875>
+EMOJIS.ico_x          // <:ico_x:1332185757799944225>
+EMOJIS.ico_loading    // <:ico_loading:1332185739114450957>
+EMOJIS.ico_user       // <:ico_user:1332185755484684308>
+
+// Links and URLs
+LINKS.server   // Discord server invite
+LINKS.github   // GitHub repository
+LINKS.brand    // Bot avatar URL
+
+// Bot information
+TEXT.brand     // 'AutoResponse'
+TEXT.appid     // Bot application ID
+TEXT.ownerid   // Owner user ID
+```
+
+<Card title="Over 80 Custom Emojis" icon="face-smile">
+  The constants file includes IDs for 80+ custom emojis including Discord badges, icons, and bot-specific graphics.
+</Card>
+
+### markdown.js
+
+Markdown and formatting utilities.
+
+**Location**: `utils/markdown.js`
+
+```javascript
+const { codeblock } = require('./utils/markdown');
+
+// Create formatted code block
+const formatted = codeblock('javascript', [
+    'const x = 1;',
+    'console.log(x);'
+]);
+```
+
+### ansi.js
+
+ANSI color formatting for code blocks.
+
+**Location**: `utils/ansi.js`
+
+```javascript
+const { format } = require('./utils/ansi');
+
+// Format text with ANSI color codes
+const colored = format('text', 'r'); // red
+const colored = format('text', 'g'); // green
+const colored = format('text', 'm'); // magenta
+```
+
+## Email Utilities
+
+### sendEmail.js
+
+Sends error notifications via email.
+
+**Location**: `utils/sendEmail.js`
+
+```javascript
+const { sendEmail } = require('./utils/sendEmail');
+
+// Send error notification
+await sendEmail('Event Name', error.stack);
+```
+
+**Used in**:
+- Error event handlers
+- Critical command failures
+- System-level issues
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Import What You Need" icon="download">
+    Only import the specific functions you need to reduce memory usage:
+    ```javascript
+    const { Error, Done } = require('./utils/logging');
+    ```
+  </Card>
+  
+  <Card title="Close Databases" icon="database">
+    Always close database connections in finally blocks:
+    ```javascript
+    try {
+        // DB operations
+    } finally {
+        db.close();
+    }
+    ```
+  </Card>
+  
+  <Card title="Use Constants" icon="hashtag">
+    Reference centralized constants instead of hardcoding values:
+    ```javascript
+    .setColor(COLORS.default)
+    ```
+  </Card>
+  
+  <Card title="Handle Errors" icon="triangle-exclamation">
+    Wrap utility calls in try-catch and log failures:
+    ```javascript
+    try {
+        await replyToUser(message);
+    } catch (error) {
+        Error(`Reply failed: ${error.message}`);
+    }
+    ```
+  </Card>
+</CardGroup>
+
+## Utility Categories
+
+<AccordionGroup>
+  <Accordion title="Logging & Debugging">
+    - `logging.js` - Console and database logging
+    - `ansi.js` - Color formatting
+  </Accordion>
+  
+  <Accordion title="Discord Operations">
+    - `embeds.js` - Embed builders
+    - `reply.js` - Auto-reply handler
+    - `setPresence.js` - Bot status
+    - `registerCommands.js` - Command registration
+  </Accordion>
+  
+  <Accordion title="Database Operations">
+    - `getSettings.js` - Retrieve server config
+    - `updateLeaderboard.js` - Track statistics
+    - `getLeaderboards.js` - Initialize databases
+  </Accordion>
+  
+  <Accordion title="Content & Media">
+    - `scanImage.js` - NSFW detection
+    - `markdown.js` - Text formatting
+  </Accordion>
+  
+  <Accordion title="Configuration">
+    - `constants.js` - Centralized values
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  All utilities follow consistent error handling patterns and integrate with the logging system for easy debugging and monitoring.
+</Note>

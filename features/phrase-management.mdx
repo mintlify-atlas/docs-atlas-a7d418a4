@@ -1,0 +1,342 @@
+---
+title: Phrase Management
+description: Add, remove, list, and manage the reply phrases your AutoResponse bot uses
+---
+
+Phrases are the responses AutoResponse sends when the auto-reply system is triggered. Each server has its own phrase database, allowing customized replies that fit your community's style and culture.
+
+## How Phrases Work
+
+When AutoResponse decides to send a reply, it:
+
+1. Queries all phrases from the server's database
+2. Randomly selects one phrase from the collection
+3. Sends that phrase as a reply to the user's message
+
+From `utils/reply.js:33-42`:
+
+```javascript
+const phrases = await getPhrases(db);
+
+if (phrases.length > 0) {
+    const randomIndex = Math.floor(Math.random() * phrases.length);
+    const randomPhrase = phrases[randomIndex];
+    
+    await message.reply({
+        content: randomPhrase,
+        allowedMentions: { repliedUser: false },
+    });
+}
+```
+
+<Note>
+  If your server has no phrases configured, the bot will not be able to send replies even if the auto-reply chance triggers.
+</Note>
+
+## Adding Phrases
+
+Use the `/addphrase` command to add new reply phrases to your server:
+
+```
+/addphrase phrase:Hello there!
+```
+
+### Command Details
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `phrase` | String | Yes | The text to add as a reply phrase |
+
+<Steps>
+  <Step title="Run the command">
+    Execute `/addphrase` with your desired phrase text.
+  </Step>
+  
+  <Step title="Duplicate check">
+    The bot checks if the exact phrase already exists in your server's database.
+  </Step>
+  
+  <Step title="Add to database">
+    If unique, the phrase is inserted into the `phrases` table for your server.
+  </Step>
+  
+  <Step title="Confirmation">
+    You receive an embed confirming the phrase was added successfully.
+  </Step>
+</Steps>
+
+### Duplicate Prevention
+
+From `commands/slash/addPhrase.js:37-50`:
+
+```javascript
+const checkPhraseExistsQuery = `SELECT COUNT(*) AS count FROM phrases WHERE phrase = ?`;
+
+db.get(checkPhraseExistsQuery, [phrase], (err, row) => {
+    if (row.count > 0) {
+        const alreadyAddedEmbed = ErrorEmbed(`"${phrase}" is already a phrase.`);
+        interaction.reply({ embeds: [alreadyAddedEmbed], ephemeral: true });
+    } else {
+        // Insert the new phrase
+        const insertPhraseQuery = `INSERT INTO phrases (phrase) VALUES (?)`;
+        db.run(insertPhraseQuery, [phrase]);
+    }
+});
+```
+
+<Warning>
+  Each phrase must be unique within your server. If you try to add a duplicate, the bot will reject it with an error message.
+</Warning>
+
+### Permissions Required
+
+- **Manage Channels** permission is required to add phrases
+- This ensures only trusted moderators can control the bot's responses
+
+<Tip>
+  Phrase matching is case-sensitive. "Hello" and "hello" are treated as different phrases.
+</Tip>
+
+## Removing Phrases
+
+Use the `/removephrase` command to delete phrases from your server:
+
+```
+/removephrase phrase:Hello there!
+```
+
+### Command Details
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `phrase` | String | Yes | The exact phrase text to remove |
+
+<Note>
+  You must provide the exact phrase text as it appears in the database. The phrase must match exactly, including capitalization and punctuation.
+</Note>
+
+From `commands/slash/removePhrase.js:36-47`:
+
+```javascript
+const deletePhraseQuery = `DELETE FROM phrases WHERE phrase = ?`;
+
+db.run(deletePhraseQuery, [phraseToRemove], function (err) {
+    if (err) {
+        const errorEmbed = ErrorEmbed("Failed to remove the phrase from the database.");
+        return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+    
+    const successEmbed = SuccessEmbed(
+        "Removed Phrase Successfully", 
+        `\`\`\`"${phraseToRemove}" has been removed as a phrase.\`\`\``
+    );
+    interaction.reply({ embeds: [successEmbed], ephemeral: true });
+});
+```
+
+### Permissions Required
+
+- **Manage Channels** permission is required to remove phrases
+
+<Warning>
+  There is no confirmation prompt before deletion. Once you run `/removephrase`, the phrase is immediately deleted from the database.
+</Warning>
+
+## Listing Phrases
+
+Use the `/listphrases` command to view all phrases configured for your server:
+
+```
+/listphrases
+```
+
+This command has no parameters and displays all phrases in a formatted list.
+
+### Display Format
+
+From `commands/slash/listPhrases.js:45-48`:
+
+```javascript
+const phrasesList = rows.map(row => row.phrase).join("\n- ");
+const infoEmbed = InfoEmbed(`- ${phrasesList}`);
+interaction.reply({ embeds: [infoEmbed] });
+```
+
+Phrases are displayed as a bulleted list:
+
+```
+- Hello there!
+- Welcome to the server
+- Nice message!
+- Thanks for sharing
+```
+
+<Note>
+  Unlike `/addphrase` and `/removephrase`, the `/listphrases` response is NOT ephemeral by default. Everyone in the channel can see the phrase list.
+</Note>
+
+### Empty Phrase List
+
+If your server has no phrases:
+
+```javascript
+if (rows.length === 0) {
+    const noPhrasesEmbed = ErrorEmbed("No phrases have been added yet.");
+    return interaction.reply({ embeds: [noPhrasesEmbed] });
+}
+```
+
+<Warning>
+  If you have no phrases configured, the bot cannot send auto-replies even in configured reply channels. Always maintain at least a few phrases for the bot to use.
+</Warning>
+
+## Database Structure
+
+Phrases are stored per-server in individual SQLite databases:
+
+### Storage Location
+
+- **Path**: `data/{serverId}.db`
+- **Table**: `phrases`
+- **Schema**: `phrase TEXT PRIMARY KEY`
+
+From `commands/slash/addPhrase.js:12-14`:
+
+```javascript
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS phrases ( phrase TEXT PRIMARY KEY )`);
+});
+```
+
+### Primary Key Constraint
+
+<Card title="Phrase Uniqueness" icon="key">
+  The `phrase` column is the primary key, which enforces uniqueness at the database level. This prevents duplicate phrases even if the application-level check fails.
+</Card>
+
+## Best Practices
+
+<Accordion title="Build a diverse phrase library">
+  Add 20-50 varied phrases to keep bot responses interesting and unpredictable. Mix greeting styles, lengths, and tones.
+</Accordion>
+
+<Accordion title="Keep phrases appropriate">
+  Remember that phrases are sent as replies to user messages. Ensure all phrases are appropriate for your server's audience and follow Discord's Terms of Service.
+</Accordion>
+
+<Accordion title="Test new phrases">
+  After adding phrases, monitor the bot's responses to ensure they sound natural in context. Remove any that seem awkward or problematic.
+</Accordion>
+
+<Accordion title="Regular maintenance">
+  Periodically run `/listphrases` to review your phrase collection. Remove outdated or seasonal phrases that no longer fit.
+</Accordion>
+
+<Accordion title="Avoid mentioning specific users">
+  Don't include @mentions or user-specific content in phrases, as they'll be used randomly for any user. Keep phrases generic and universally applicable.
+</Accordion>
+
+## Phrase Guidelines
+
+### What Makes a Good Phrase
+
+✅ **Good phrases:**
+- Short and casual: "Hey there!"
+- Friendly acknowledgments: "Thanks for sharing!"
+- Neutral responses: "Interesting point"
+- Fun reactions: "That's pretty cool"
+
+❌ **Avoid:**
+- Questions requiring answers (creates confusion)
+- User-specific content ("@John, check this out")
+- Controversial or political statements
+- Very long paragraphs (seems unnatural)
+- Phrases with formatting that might break (complex markdown)
+
+<Tip>
+  Phrases can include basic Discord markdown like **bold**, *italic*, and `code`, but test them to ensure they display correctly.
+</Tip>
+
+## Advanced: Direct Database Access
+
+For bulk operations, you can directly access the SQLite database:
+
+```bash
+sqlite3 data/{serverId}.db
+```
+
+### Bulk Insert Example
+
+```sql
+INSERT INTO phrases (phrase) VALUES 
+  ('Hello!'),
+  ('Welcome!'),
+  ('Nice to see you!'),
+  ('Thanks for chatting!');
+```
+
+### View All Phrases
+
+```sql
+SELECT * FROM phrases;
+```
+
+### Delete All Phrases
+
+```sql
+DELETE FROM phrases;
+```
+
+<Warning>
+  Direct database manipulation bypasses all safety checks and logging. Use with caution and always backup your database first.
+</Warning>
+
+## Troubleshooting
+
+<Accordion title="Command not responding">
+  Ensure your Discord role has the **Manage Channels** permission. Phrase management commands require this permission to execute.
+</Accordion>
+
+<Accordion title="Bot not using new phrases">
+  Phrases are loaded fresh from the database with each reply. New phrases should be available immediately after adding them. Check that auto-replies are actually triggering by monitoring the console logs.
+</Accordion>
+
+<Accordion title="Can't remove a phrase">
+  Ensure you're typing the phrase exactly as it appears in `/listphrases`, including all punctuation, spacing, and capitalization. Copy-paste from the list to guarantee accuracy.
+</Accordion>
+
+<Accordion title="Database locked errors">
+  SQLite databases can only have one writer at a time. If you see lock errors, wait a moment and try again. This is rare but can happen during high-activity periods.
+</Accordion>
+
+## Technical Details
+
+### Database Initialization
+
+Each phrase management command initializes the database connection:
+
+```javascript
+function initializeDatabase(serverId) {
+    const dbFilePath = path.join(__dirname, "..", "..", "data", `${serverId}.db`);
+    const db = new sqlite3.Database(dbFilePath);
+    
+    db.serialize(() => {
+        db.run(`CREATE TABLE IF NOT EXISTS phrases ( phrase TEXT PRIMARY KEY )`);
+    });
+    
+    return db;
+}
+```
+
+This ensures the phrases table exists before any operations are performed.
+
+### Error Handling
+
+All phrase commands include comprehensive error handling:
+
+- Database connection failures
+- Query execution errors  
+- Duplicate key violations
+- Empty result sets
+
+Errors are logged to the console and displayed to users via error embeds.

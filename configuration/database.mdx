@@ -1,0 +1,341 @@
+---
+title: Database Structure
+description: Understanding AutoResponse's SQLite database architecture and tables
+---
+
+## Overview
+
+AutoResponse uses SQLite for data persistence. The bot maintains multiple database files for different purposes, all stored in the `data/` directory.
+
+<Note>
+  All databases are created automatically when the bot starts up or when the first relevant command is executed.
+</Note>
+
+## Database Files
+
+AutoResponse uses four types of database files:
+
+### Per-Server Databases
+
+**Location:** `data/{serverId}.db`
+
+Each Discord server (guild) has its own database file, named with the server's Discord ID. These contain server-specific configuration.
+
+<Tip>
+  Server databases are created automatically when a server administrator runs configuration commands like `/addreplychannel` or `/addphrase`.
+</Tip>
+
+### Global Databases
+
+| Database | Purpose |
+|----------|----------|
+| **optoutlist.db** | Stores users who opted out of receiving replies |
+| **leaderboards.db** | Tracks reply statistics and seasonal leaderboards |
+| **replyCooldowns.db** | Manages per-channel reply cooldowns |
+
+## Server Database Schema
+
+Each server database (initialized in `commands/slash/addReplyChannel.js:9`) contains three tables:
+
+### replyChannels Table
+
+Stores channels where the bot is allowed to send auto-replies.
+
+```sql
+CREATE TABLE IF NOT EXISTS replyChannels (
+    id TEXT PRIMARY KEY,
+    chance INTEGER
+)
+```
+
+**Columns:**
+- **id** - Discord channel ID (primary key)
+- **chance** - Current percentage chance (0-100) of replying to the next message
+
+<Accordion title="How the Chance System Works">
+  When a message is sent in a reply channel:
+  
+  1. The bot rolls a random number between 0-100
+  2. If the number is less than or equal to `chance`, the bot replies
+  3. On reply: `chance` is reset to 6%
+  4. On no reply: `chance` increases by 1% (max 100%)
+  
+  This creates a dynamic system where replies become more likely over time until one occurs.
+  
+  See implementation in `src/events/messageCreate.js:223`.
+</Accordion>
+
+### trustedRoles Table
+
+Stores Discord roles that have special permissions or trust levels.
+
+```sql
+CREATE TABLE IF NOT EXISTS trustedRoles (
+    id TEXT PRIMARY KEY
+)
+```
+
+**Columns:**
+- **id** - Discord role ID (primary key)
+
+### phrases Table
+
+Stores trigger phrases that influence bot replies.
+
+```sql
+CREATE TABLE IF NOT EXISTS phrases (
+    phrase TEXT PRIMARY KEY
+)
+```
+
+**Columns:**
+- **phrase** - The trigger phrase text (primary key)
+
+<Note>
+  Phrases are managed through the `/addphrase` and `/removephrase` commands.
+</Note>
+
+## Global Database Schemas
+
+### optoutlist.db
+
+**Location:** `data/optoutlist.db`
+
+**Initialized in:** `src/events/messageCreate.js:17`
+
+Stores users who have opted out of receiving auto-replies.
+
+```sql
+CREATE TABLE IF NOT EXISTS OptOutList (
+    userId TEXT PRIMARY KEY,
+    userTag TEXT UNIQUE
+)
+```
+
+**Columns:**
+- **userId** - Discord user ID (primary key)
+- **userTag** - Discord username (unique constraint)
+
+**Usage:**
+- Users are added via `/optout` command
+- Users are removed via `/optin` command
+- Checked before every reply in `src/events/messageCreate.js:153`
+
+### replyCooldowns.db
+
+**Location:** `data/replyCooldowns.db`
+
+**Initialized in:** `src/events/messageCreate.js:48`
+
+Tracks cooldowns to prevent the bot from replying too frequently in a specific channel.
+
+```sql
+CREATE TABLE IF NOT EXISTS cooldowns (
+    serverId TEXT,
+    channelId TEXT,
+    timeRemaining INTEGER,
+    PRIMARY KEY (serverId, channelId)
+)
+```
+
+**Columns:**
+- **serverId** - Discord server ID
+- **channelId** - Discord channel ID
+- **timeRemaining** - Unix timestamp when cooldown expires
+- **Primary Key:** Composite of `serverId` and `channelId`
+
+**Usage:**
+- Checked before sending replies to prevent spam
+- Retrieved via `getCooldownTimeRemaining()` function in `src/events/messageCreate.js:65`
+
+### leaderboards.db
+
+**Location:** `data/leaderboards.db`
+
+**Accessed in:** `commands/slash/leaderboard.js:83`
+
+Stores reply statistics and seasonal leaderboards.
+
+**Tables:**
+- **current** - Current season leaderboard
+- **Season1** - First season historical data
+- **Season2** - Second season historical data
+
+**Schema (per season table):**
+
+```sql
+CREATE TABLE IF NOT EXISTS {season} (
+    username TEXT PRIMARY KEY,
+    replies INTEGER,
+    groups TEXT
+)
+```
+
+**Columns:**
+- **username** - Discord username
+- **replies** - Total number of replies received
+- **groups** - Comma-separated list of user groups/badges (e.g., "Owner", "Programmer", "Helper", "S1W", "S2W")
+
+<Tip>
+  The leaderboard system tracks which users receive the most auto-replies, creating engagement through gamification.
+</Tip>
+
+## Database Initialization
+
+Databases are initialized automatically in different parts of the codebase:
+
+<Steps>
+  <Step title="optoutlist.db">
+    Created when the bot starts up via `src/events/messageCreate.js:17`
+  </Step>
+  
+  <Step title="replyCooldowns.db">
+    Created when the bot starts up via `src/events/messageCreate.js:48`
+  </Step>
+  
+  <Step title="Server Databases">
+    Created when a server admin runs configuration commands like:
+    - `/addreplychannel`
+    - `/addphrase`
+    
+    Initialization happens via the `initializeDatabase()` function.
+  </Step>
+  
+  <Step title="leaderboards.db">
+    Must be manually created and populated (not automatically initialized by bot)
+  </Step>
+</Steps>
+
+## Data Directory Structure
+
+```
+data/
+├── {serverId1}.db          # Server-specific database
+├── {serverId2}.db          # Another server's database
+├── optoutlist.db           # Global opt-out list
+├── leaderboards.db         # Leaderboard data
+├── replyCooldowns.db       # Reply cooldowns
+├── disabledEvents.json     # Disabled event handlers
+└── media/                  # Downloaded message attachments
+    └── {username}-{date}-{filename}.ext
+```
+
+<Note>
+  The `data/` directory and all required subdirectories are created automatically if they don't exist.
+</Note>
+
+## Database Management
+
+### Backup Recommendations
+
+<Warning>
+  Always backup your databases before making manual changes or updating the bot.
+</Warning>
+
+To backup your databases:
+
+```bash
+# Backup all databases
+cp -r data/ data-backup-$(date +%Y%m%d)/
+
+# Backup specific database
+cp data/optoutlist.db data/optoutlist.db.backup
+```
+
+### Manual Database Access
+
+You can inspect databases using the SQLite CLI:
+
+```bash
+# Open a database
+sqlite3 data/optoutlist.db
+
+# List all tables
+.tables
+
+# View table schema
+.schema OptOutList
+
+# Query data
+SELECT * FROM OptOutList;
+
+# Exit
+.quit
+```
+
+### Database Migration
+
+<Accordion title="Migrating to a New Server">
+  If you need to move your bot to a new server/machine:
+  
+  1. Stop the bot
+  2. Copy the entire `data/` directory to the new location
+  3. Ensure file permissions are correct
+  4. Start the bot on the new machine
+</Accordion>
+
+<Accordion title="Clearing Server Data">
+  To remove all data for a specific Discord server:
+  
+  ```bash
+  rm data/{serverId}.db
+  ```
+  
+  The server's configuration will be reset. The bot will create a fresh database when configuration commands are run again.
+</Accordion>
+
+<Accordion title="Resetting Opt-Out List">
+  To clear all opt-outs (use with caution):
+  
+  ```bash
+  sqlite3 data/optoutlist.db "DELETE FROM OptOutList;"
+  ```
+  
+  Or delete and recreate:
+  
+  ```bash
+  rm data/optoutlist.db
+  # Bot will recreate on next startup
+  ```
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database Locked Error">
+    If you see "database is locked" errors:
+    
+    - Ensure only one instance of the bot is running
+    - Check for zombie processes: `ps aux | grep node`
+    - Kill any duplicate processes
+    - Restart the bot
+  </Accordion>
+  
+  <Accordion title="Corrupted Database">
+    If a database becomes corrupted:
+    
+    1. Stop the bot
+    2. Restore from backup if available
+    3. Or delete the corrupted database and let the bot recreate it
+    
+    Note: Deleting databases will lose all configuration for that database.
+  </Accordion>
+  
+  <Accordion title="Missing Tables">
+    If tables are missing:
+    
+    - Delete the database file
+    - Restart the bot
+    - Run relevant commands to trigger table creation
+  </Accordion>
+  
+  <Accordion title="Permission Errors">
+    If you see permission errors:
+    
+    ```bash
+    # Fix file permissions
+    chmod 644 data/*.db
+    chmod 755 data/
+    ```
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,449 @@
+---
+title: Discord Event System
+description: Learn how AutoResponse handles Discord events and implements custom event handlers
+---
+
+## Event System Architecture
+
+AutoResponse uses a dynamic event loading system that automatically discovers and registers event handlers from the `src/events/` directory. The event system is initialized in `src/client.js` and provides robust error handling and event management capabilities.
+
+### Event Loading Process
+
+The bot follows this process when loading events:
+
+<Steps>
+  <Step title="Discover Event Files">
+    The system scans the `src/events/` directory for all `.js` files
+    
+    ```javascript
+    const eventFiles = fs.readdirSync(path.resolve(__dirname, 'events'))
+      .filter(file => file.endsWith('.js'));
+    ```
+  </Step>
+  
+  <Step title="Check Disabled Events">
+    Reads `data/disabledEvents.json` to check if any events should be skipped
+    
+    ```json
+    {
+      "disabledEvents": ["typingStart", "presenceUpdate"]
+    }
+    ```
+  </Step>
+  
+  <Step title="Validate Event Structure">
+    Each event must export an object with:
+    - `name`: The Discord event name
+    - `execute`: An async function that handles the event
+  </Step>
+  
+  <Step title="Register Event Listeners">
+    Valid events are registered with automatic error handling
+    
+    ```javascript
+    client.on(event.name, async (...args) => {
+      try {
+        await event.execute(...args);
+      } catch (error) {
+        Error(`Error executing event ${event.name}:\n${error.stack}`);
+      }
+    });
+    ```
+  </Step>
+</Steps>
+
+## Event Handler Structure
+
+All event handlers follow a consistent structure. Here's the template:
+
+```javascript
+const { Error } = require('../../utils/logging');
+const { sendEmail } = require('../../utils/sendEmail');
+
+module.exports = {
+    name: 'eventName',
+    async execute(...args) {
+        try {
+            // Event handling logic here
+        } catch (error) {
+            Error(`Error executing ${module.exports.name}:\n${error.stack}`);
+            sendEmail(module.exports.name, error.stack);
+        }
+    }
+};
+```
+
+<Note>
+  All event handlers include try-catch blocks for error handling and logging to ensure the bot remains stable even when individual events fail.
+</Note>
+
+## Core Events
+
+### ready
+
+Fired when the bot successfully connects to Discord. This event handles initialization tasks.
+
+**Location**: `src/events/ready.js`
+
+```javascript
+module.exports = {
+    name: "ready",
+    async execute(client) {
+        try {
+            // Register slash commands
+            await registerCommands(client);
+            
+            // Initialize leaderboards
+            getLeaderboards();
+
+            // Load settings for all guilds
+            client.guilds.cache.forEach(async (guild) => {
+                await getSettings(guild.id, client);
+            });
+        } catch (error) {
+            Error(`Error executing ready event:\n${error.stack}`);
+        }
+    },
+};
+```
+
+**Responsibilities**:
+- Register application commands with Discord API
+- Initialize leaderboard database
+- Load guild-specific settings from databases
+
+### messageCreate
+
+The primary event for handling incoming messages and implementing auto-reply functionality.
+
+**Location**: `src/events/messageCreate.js`
+
+**Key Features**:
+- Owner command processing with prefix
+- Opt-out list checking
+- Reply cooldown management
+- Attachment downloading
+- Dynamic reply chance system
+- Support for embeds and polls
+
+```javascript
+module.exports = {
+    name: "messageCreate",
+    async execute(message) {
+        const serverId = message.guild ? message.guild.id : null;
+        const settings = await getSettings(serverId, message.client);
+        const replyChannels = settings.replyChannels || [];
+        const replyChannel = replyChannels.find(channel => 
+            channel.id === message.channel.id
+        );
+        
+        // Check opt-out list
+        const optOutList = await getOptOutList();
+        if (optOutList.includes(message.author.username)) {
+            return;
+        }
+        
+        // Check cooldown
+        const cooldown = await getCooldownTimeRemaining(serverId, channelId);
+        if (cooldown > 0) {
+            return;
+        }
+        
+        // Dynamic reply chance
+        let chance = replyChannel ? replyChannel.chance : 0;
+        const randomChance = Math.random() * 100;
+        
+        if (randomChance <= chance) {
+            replyToUser(message);
+            replyChannel.chance = 6; // Reset to base chance
+        } else {
+            chance = Math.min(chance + 1, 100); // Increase chance
+        }
+    },
+};
+```
+
+<Tip>
+  The dynamic chance system starts at 6% and increases by 1% with each message until the bot replies, creating natural conversation flow.
+</Tip>
+
+### interactionCreate
+
+Handles slash commands and context menu interactions.
+
+**Location**: `src/events/interactionCreate.js`
+
+```javascript
+module.exports = {
+    name: 'interactionCreate',
+    async execute(interaction) {
+        if (interaction.isChatInputCommand()) {
+            const commandName = interaction.commandName;
+            const commandFilePath = path.join(
+                __dirname, '..', '..', 'commands', 'slash', `${commandName}.js`
+            );
+            
+            try {
+                const command = require(commandFilePath);
+                await command.execute(interaction);
+            } catch (error) {
+                const errorEmbed = ErrorEmbed(
+                    `Error executing slash command ${commandName}:\n${error.message}`
+                );
+                
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({ embeds: [errorEmbed] });
+                } else {
+                    await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                }
+            }
+        } else if (interaction.isContextMenuCommand()) {
+            // Handle context menu commands
+        }
+    }
+};
+```
+
+**Supports**:
+- Slash commands (`/ping`, `/help`, etc.)
+- Context menu commands (user and message context menus)
+- Proper reply/edit handling for deferred interactions
+
+## Guild Events
+
+### guildCreate
+
+Fired when the bot joins a new server.
+
+```javascript
+module.exports = {
+    name: 'guildCreate',
+    execute(guild) {
+        guildCreate(`Joined guild: ${guild.name} (${guild.id})`);
+    }
+};
+```
+
+### guildMemberAdd
+
+Monitors new members joining and reacts to their first message with trust indicators.
+
+```javascript
+module.exports = {
+    name: 'guildMemberAdd',
+    execute(member) {
+        const userFlags = member.user.flags;
+        
+        // Define warning flags
+        const warningFlags = {
+            'Quarantined': EMOJIS.ico_exclamation,
+            'RestrictedCollaborator': EMOJIS.ico_exclamation,
+            'Spammer': EMOJIS.ico_exclamation
+        };
+        
+        // Listen for first message
+        const messageListener = async (message) => {
+            if (message.author.id === member.user.id) {
+                let emoji = EMOJIS.ico_trusted;
+                
+                if (userFlags.length > 0) {
+                    const userFlag = userFlags.find(flag => warningFlags[flag]);
+                    emoji = userFlag ? warningFlags[userFlag] : EMOJIS.ico_trusted;
+                }
+                
+                await message.react(emoji);
+                client.removeListener('messageCreate', messageListener);
+            }
+        };
+        
+        client.on('messageCreate', messageListener);
+    }
+};
+```
+
+<Warning>
+  This event automatically reacts to new members' first messages with warning or trust indicators based on their Discord flags.
+</Warning>
+
+## Message Events
+
+### messageDelete
+
+Logs deleted messages with full context.
+
+```javascript
+module.exports = {
+    name: 'messageDelete',
+    async execute(message) {
+        let serverName = message.guild ? message.guild.name : "Direct Message";
+        let channelName = message.channel ? message.channel.name : "Direct Message";
+        
+        if (message.partial) {
+            messageDelete(`${serverName} - #${channelName} - (Deleted)`);
+        } else {
+            let authorUsername = message.author ? message.author.username : 'Unknown user';
+            let messageContent = message.content || '';
+            
+            if (message.embeds.length > 0) {
+                messageContent += ' EMBED ';
+            }
+            
+            messageDelete(`${serverName} - #${channelName} - ${authorUsername} - ${messageContent} (Deleted)`);
+        }
+    }
+};
+```
+
+### messageUpdate
+
+Tracks message edits (implementation varies by needs).
+
+## Error Events
+
+### error
+
+Handles Discord client errors.
+
+```javascript
+module.exports = {
+    name: 'error',
+    execute(error) {
+        Error(error);
+        sendEmail(module.exports.name, error);
+    }
+};
+```
+
+### warn
+
+Handles Discord client warnings.
+
+```javascript
+module.exports = {
+    name: 'warn',
+    execute(info) {
+        Warn(info);
+        sendEmail(module.exports.name, info);
+    }
+};
+```
+
+## Disabled Events System
+
+You can disable specific events by creating a `data/disabledEvents.json` file:
+
+```json
+{
+  "disabledEvents": [
+    "typingStart",
+    "presenceUpdate",
+    "voiceStateUpdate"
+  ]
+}
+```
+
+<Accordion title="Why disable events?">
+  Some events like `typingStart` and `presenceUpdate` can generate excessive logs and consume resources without providing value for most use cases. Disabling them improves performance.
+</Accordion>
+
+**Disabled events are logged at startup**:
+```
+Disabled event: typingStart
+Disabled event: presenceUpdate
+```
+
+## Complete Event List
+
+AutoResponse includes handlers for 75+ Discord events:
+
+<AccordionGroup>
+  <Accordion title="Message Events">
+    - `messageCreate` - New message received
+    - `messageDelete` - Message deleted
+    - `messageDeleteBulk` - Multiple messages deleted
+    - `messageUpdate` - Message edited
+    - `messageReactionAdd` - Reaction added
+    - `messageReactionRemove` - Reaction removed
+    - `messageReactionRemoveAll` - All reactions removed
+    - `messageReactionRemoveEmoji` - Specific emoji reactions removed
+    - `messagePollVoteAdd` - Poll vote added
+    - `messagePollVoteRemove` - Poll vote removed
+  </Accordion>
+  
+  <Accordion title="Guild Events">
+    - `guildCreate` - Bot joins server
+    - `guildDelete` - Bot leaves server
+    - `guildUpdate` - Server settings updated
+    - `guildAvailable` - Server becomes available
+    - `guildUnavailable` - Server becomes unavailable
+    - `guildMemberAdd` - Member joins
+    - `guildMemberRemove` - Member leaves
+    - `guildMemberUpdate` - Member updated
+    - `guildBanAdd` - Member banned
+    - `guildBanRemove` - Member unbanned
+  </Accordion>
+  
+  <Accordion title="Channel Events">
+    - `channelCreate` - Channel created
+    - `channelDelete` - Channel deleted
+    - `channelUpdate` - Channel updated
+    - `channelPinsUpdate` - Pins updated
+  </Accordion>
+  
+  <Accordion title="Thread Events">
+    - `threadCreate` - Thread created
+    - `threadDelete` - Thread deleted
+    - `threadUpdate` - Thread updated
+    - `threadMemberUpdate` - Thread member updated
+    - `threadMembersUpdate` - Thread members updated
+  </Accordion>
+  
+  <Accordion title="Role & Emoji Events">
+    - `roleCreate` - Role created
+    - `roleDelete` - Role deleted
+    - `roleUpdate` - Role updated
+    - `emojiCreate` - Emoji created
+    - `emojiDelete` - Emoji deleted
+    - `emojiUpdate` - Emoji updated
+  </Accordion>
+  
+  <Accordion title="Automod Events">
+    - `autoModerationActionExecution` - Automod action triggered
+    - `autoModerationRuleCreate` - Automod rule created
+    - `autoModerationRuleDelete` - Automod rule deleted
+    - `autoModerationRuleUpdate` - Automod rule updated
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Include Error Handling" icon="shield-check">
+    Wrap event logic in try-catch blocks and use the logging utilities to report errors.
+  </Card>
+  
+  <Card title="Use Event-Specific Logging" icon="file-lines">
+    Import event-specific logging functions from `utils/logging.js` for consistent log formatting.
+  </Card>
+  
+  <Card title="Handle Partial Data" icon="circle-half-stroke">
+    Some events may receive partial objects. Always check for partials and handle them appropriately.
+  </Card>
+  
+  <Card title="Clean Up Listeners" icon="broom">
+    Remove event listeners when they're no longer needed to prevent memory leaks.
+  </Card>
+</CardGroup>
+
+## Testing Events
+
+To test event handlers:
+
+1. Enable debug logging in your environment
+2. Trigger the event in Discord (send a message, join a server, etc.)
+3. Check the console output and `data/logs.db` for event logs
+4. Verify the event handler executed successfully
+
+<Note>
+  All events are automatically logged to the SQLite database in `data/logs.db` with timestamps and event types for debugging.
+</Note>
