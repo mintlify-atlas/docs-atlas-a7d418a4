@@ -543,6 +543,87 @@ await sendEmail('Event Name', error.stack);
 - Critical command failures
 - System-level issues
 
+### replyCooldowns.js
+
+Initialize and manage reply cooldown tables per server.
+
+**Location**: `utils/replyCooldowns.js`
+
+```javascript
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+function initializeReplyCooldownTable(serverId) {
+    replyCooldownsDb.run(
+        `CREATE TABLE IF NOT EXISTS ${serverId} (channelId TEXT PRIMARY KEY, timeRemaining INTEGER)`,
+        (err) => {
+            if (err) {
+                Error(`Error creating table for server ${serverId}: ${err.message}`);
+            }
+        }
+    );
+}
+```
+
+**Database**: `data/ReplyCooldowns.db` with per-server tables
+
+<Note>
+  This utility is used internally by the messageCreate event to manage cooldowns after auto-replies are sent.
+</Note>
+
+### updateEmojis.js
+
+Manage Discord application emojis (upload, delete, update constants).
+
+**Location**: `utils/updateEmojis.js`
+
+```javascript
+const { updateEmojis } = require('./utils/updateEmojis');
+
+// Update all application emojis from data/bot/emojis/
+await updateEmojis();
+```
+
+**Functionality**:
+- Deletes all existing application emojis
+- Uploads new emojis from `data/bot/emojis/` directory
+- Updates `constants.js` with new emoji IDs and markdown
+
+**Environment Variables**:
+- `APPID` - Discord application ID
+- `TOKEN` - Bot token with emoji management permissions
+
+<Warning>
+  This is an administrative utility typically called by the `!update` owner command. It requires application emoji management permissions.
+</Warning>
+
+### updateLibraries.js
+
+Check for and install npm package updates using `npm-check-updates`.
+
+**Location**: `utils/updateLibraries.js`
+
+```javascript
+const { updateLibraries } = require('./utils/updateLibraries');
+
+// Update all npm dependencies
+const result = await updateLibraries();
+console.log(result); // Returns update status or list of updated packages
+```
+
+**Functionality**:
+- Runs `ncu -u` to update package.json
+- Executes `npm install` to install updated packages
+- Returns formatted output showing updated packages
+
+**Returns**:
+- `"-# All libraries are up to date"` if no updates
+- Formatted list of updated packages if changes were made
+
+<Note>
+  Requires `npm-check-updates` (ncu) to be installed globally or as a dev dependency.
+</Note>
+
 ## Best Practices
 
 <CardGroup cols={2}>
@@ -602,6 +683,7 @@ await sendEmail('Event Name', error.stack);
     - `getSettings.js` - Retrieve server config
     - `updateLeaderboard.js` - Track statistics
     - `getLeaderboards.js` - Initialize databases
+    - `replyCooldowns.js` - Cooldown table management
   </Accordion>
   
   <Accordion title="Content & Media">
@@ -611,6 +693,12 @@ await sendEmail('Event Name', error.stack);
   
   <Accordion title="Configuration">
     - `constants.js` - Centralized values
+  </Accordion>
+  
+  <Accordion title="Administrative">
+    - `updateEmojis.js` - Application emoji management
+    - `updateLibraries.js` - Dependency updates
+    - `sendEmail.js` - Error notifications
   </Accordion>
 </AccordionGroup>
 
