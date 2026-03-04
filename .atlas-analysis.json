@@ -1,0 +1,81 @@
+{
+  "projectType": "general",
+  "projectName": "AutoResponse",
+  "projectDescription": "A Discord bot that automatically replies to messages with an incremental chance system, featuring leaderboards and customizable phrases.",
+  "theme": "almond",
+  "primaryColor": "#5865F2",
+  "lightColor": "#7289DA",
+  "darkColor": "#4752C4",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "installation"
+        ]
+      },
+      {
+        "group": "Features",
+        "pages": [
+          "features/auto-reply",
+          "features/leaderboards",
+          "features/phrase-management",
+          "features/channel-configuration"
+        ]
+      },
+      {
+        "group": "Commands",
+        "pages": [
+          "commands/slash-commands",
+          "commands/message-commands"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/setup",
+          "configuration/permissions",
+          "configuration/database",
+          "configuration/environment"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/events",
+          "advanced/utilities",
+          "advanced/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Incremental chance-based auto-reply system",
+    "Leaderboard tracking with seasonal support",
+    "Customizable reply phrases per server",
+    "Channel-specific reply configuration",
+    "User opt-in/opt-out system",
+    "Image scanning and attachment handling",
+    "Reply cooldown management",
+    "Privacy-focused with opt-out support"
+  ],
+  "publicApiSurface": [
+    "/ping - Check bot latency",
+    "/addphrase - Add a reply phrase",
+    "/removephrase - Remove a reply phrase",
+    "/listphrases - List all reply phrases",
+    "/addreply channel - Add a reply channel",
+    "/removereply channel - Remove a reply channel",
+    "/leaderboard - Display reply leaderboard",
+    "/optin - Opt in to auto-replies",
+    "/optout - Opt out from auto-replies",
+    "/pausereplies - Pause auto-replies",
+    "/resumereplies - Resume auto-replies",
+    "/stats - View bot statistics",
+    "/user - View user information",
+    "/setlogschannel - Set logs channel",
+    "/rename - Rename leaderboard user"
+  ]
+}
